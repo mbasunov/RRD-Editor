@@ -3,6 +3,9 @@
 use Test::Simple tests => 18;
 use RRD::Editor;
 #use String::Escape qw( printable unprintable );
+use File::Spec;
+use File::Basename qw(dirname);
+my $scriptdir=File::Spec->rel2abs(dirname(__FILE__));
 
 my $rrd = RRD::Editor->new();
 ok( defined $rrd, 'new()' );
@@ -19,7 +22,7 @@ $j+=300; ok($rrd->update("$j:731:2.99:1:56.9"));
 $j+=300; ok($rrd->update("$j:67:1.0:789:2"));
 
 # check that RRD contents are as expected
-open my $fd, "<t/test.rrd.dump"; my @file=<$fd>;  my $file=join("",@file); close $fd;
+open my $fd, "<$scriptdir/test.rrd.dump"; my @file=<$fd>;  my $file=join("",@file); close $fd;
 #open $fd, ">2"; print $fd $rrd->dump();close $fd;
 ok($rrd->dump() eq $file, 'dump()');
 
@@ -39,15 +42,15 @@ ok($rrd->save(),"save()"); # save RRD to string in memory (no need for temp file
 ok($rrd->close(),"close()");
 
 # check that portable-double header is binary compatible (can't check whole header, or file body, due to random selection of rraptr values)
-$rrd->open("t/test.rrd"); my $header=$rrd->_get_header_size()-$rrd->{RRA_PTR_EL_SIZE} * $rrd->{rrd}->{rra_cnt}-$rrd->{HEADER_PAD}; $rrd->close();
-open $fd, "<t/test.rrd"; binmode $fd; read($fd,$file,$header);close $fd; 
+$rrd->open("$scriptdir/test.rrd"); my $header=$rrd->_get_header_size()-$rrd->{RRA_PTR_EL_SIZE} * $rrd->{rrd}->{rra_cnt}-$rrd->{HEADER_PAD}; $rrd->close();
+open $fd, "<$scriptdir/test.rrd"; binmode $fd; read($fd,$file,$header);close $fd; 
 ok ($file eq substr($fileDB,0,$header), "save() header portable-double");
 #print printable($file),"\n\n";
 #print printable(substr($fileDB,0,$header));
 
 # and now check portable-single format
-$rrd->open("t/test.rrd.single"); $header=$rrd->_get_header_size()-$rrd->{RRA_PTR_EL_SIZE} * $rrd->{rrd}->{rra_cnt}-$rrd->{HEADER_PAD}; $rrd->close();
-open $fd, "<t/test.rrd.single"; binmode $fd; read($fd,$file,$header);close $fd;
+$rrd->open("$scriptdir/test.rrd.single"); $header=$rrd->_get_header_size()-$rrd->{RRA_PTR_EL_SIZE} * $rrd->{rrd}->{rra_cnt}-$rrd->{HEADER_PAD}; $rrd->close();
+open $fd, "<$scriptdir/test.rrd.single"; binmode $fd; read($fd,$file,$header);close $fd;
 ok ($file eq substr($fileDB_single,0,$header), "save() header portable-single");
 
 

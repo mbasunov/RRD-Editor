@@ -1,16 +1,12 @@
-1
-2
-_Inline/config-darwin-thread-multi-2level-5.008008
-_Inline/lib/auto/RRD/Editor_02ec/Editor_02ec.bs
-_Inline/lib/auto/RRD/Editor_02ec/Editor_02ec.bundle
-_Inline/lib/auto/RRD/Editor_02ec/Editor_02ec.inl
 Changes
 ignore.txt
 lib/RRD/Editor.pm
 Makefile.PL
-MANIFEST
+MANIFEST			This list of files
+META.yml
 README
-RRD-Editor-0.01_1.tar.gz
+scripts/rrdtool.pl
+scripts/t.pl
 t/00-load.t
 t/createfile.t
 t/editing.t
@@ -25,4 +21,3 @@ t/test.rrd.info
 t/test.rrd.rra_editing.dump
 t/test.rrd.rrdtool
 t/test.rrd.single
-META.yml                                 Module meta-data (added by MakeMaker)

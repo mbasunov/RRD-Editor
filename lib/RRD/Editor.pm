@@ -18,7 +18,7 @@ use Config;
 
 use vars qw($VERSION @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = '0.01_1';
+$VERSION = '0.01_2';
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
@@ -50,14 +50,15 @@ sub _cookie {
     } else {
         # A more complicated byte order
         # Make a call to C to get the float cookie.  Reliable, but needs Inline module to be available.
-        eval {
-use Inline C => <<'END';
+eval {
+load Inline C => <<'END';
 double _cookie_C() {
   return 8.642135E130;
 }
 END
-        };
-        if (length($@)>0) {   
+1
+};
+        if (!$@) {   
             cluck("Warning: To work with native (non-portable) RRD files, you need to install the perl Inline C module (e.g. by typing 'cpan -i Inline')\n");
             return $cookie;
         } else {
@@ -2070,7 +2071,7 @@ L<http://www.rrdtool.org>, examples/*.pl,
  
 =head1 VERSION
  
-Ver 0.01_1
+Ver 0.01_2
  
 =head1 AUTHOR
  

@@ -1,18 +1,21 @@
 #!perl -w
 
 use Test::Simple tests => 17;
+use File::Spec;
+use File::Basename qw(dirname);
+my $scriptdir=File::Spec->rel2abs(dirname(__FILE__));
 
 use RRD::Editor;
 
 my $rrd = RRD::Editor->new();
 ok( defined $rrd, 'new()' );
-ok($rrd->open("t/test.rrd"), 'open()');
-open my $fd, "<t/test.rrd.info"; my @file=<$fd>; my $file=join("",@file);
+ok($rrd->open("$scriptdir/test.rrd"), 'open()');
+open my $fd, "<$scriptdir/test.rrd.info"; my @file=<$fd>; my $file=join("",@file);
 ok($rrd->info("-n") eq $file, 'info()');
 #open $fd,">2"; print $fd $rrd->info("-n"); close $fd;
-open $fd, "<t/test.rrd.dump"; @file=<$fd>;  $file=join("",@file);
+open $fd, "<$scriptdir/test.rrd.dump"; @file=<$fd>;  $file=join("",@file);
 ok($rrd->dump() eq $file, 'dump()');
-open $fd, "<t/test.rrd.fetch"; @file=<$fd>;  $file=join("",@file);
+open $fd, "<$scriptdir/test.rrd.fetch"; @file=<$fd>;  $file=join("",@file);
 ok($rrd->fetch("AVERAGE -s 920804399") eq $file, "fetch()"); 
 ok($rrd->last() == 920806800, 'last()');
 ok($rrd->minstep() == 300, 'minstep()');
