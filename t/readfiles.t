@@ -14,7 +14,8 @@ open my $fd, "<$scriptdir/test.rrd.info"; my @file=<$fd>; my $file=join("",@file
 ok($rrd->info("-n") eq $file, 'info()');
 #open $fd,">2"; print $fd $rrd->info("-n"); close $fd;
 open $fd, "<$scriptdir/test.rrd.dump"; @file=<$fd>;  $file=join("",@file);
-ok($rrd->dump() eq $file, 'dump()');
+my $dump=$rrd->dump(); $dump=~ s/UTC/GMT/g;
+ok($dump eq $file, 'dump()');
 open $fd, "<$scriptdir/test.rrd.fetch"; @file=<$fd>;  $file=join("",@file);
 ok($rrd->fetch("AVERAGE -s 920804399") eq $file, "fetch()"); 
 ok($rrd->last() == 920806800, 'last()');

@@ -130,7 +130,7 @@
 .if n .ad l
 .nh
 .SH "NAME"
-RRD::Editor \- Standalone tool (no need for RRDs.pl) to create and edit RRD files.
+RRD::Editor \- Standalone tool (no need for RRDs.pm) to create and edit RRD files.
 .SH "SYNOPSIS"
 .IX Header "SYNOPSIS"
 .Vb 2
@@ -185,9 +185,8 @@ RRD::Editor \- Standalone tool (no need for RRDs.pl) to create and edit RRD file
 \& otherwise when creating an RRD.
 \& print $rrd\->minstep()
 .Ve
-.PP
-==head2 Edit DSs
-.PP
+.Sh "Edit DSs"
+.IX Subsection "Edit DSs"
 .Vb 2
 \& # Add a new data\-source called bytes.  Argument format is the same as $rrd\->create().
 \& $rrd\->add_DS("DS:bytes:GAUGE:600:U:U");
@@ -226,9 +225,8 @@ RRD::Editor \- Standalone tool (no need for RRDs.pl) to create and edit RRD file
 \& # Set the maximum value allowed for measurements from data\-source bytesOut to be 100
 \& $rrd\->set_DS_max("bytesOut",100);
 .Ve
-.PP
-==head2 Edit RRAs
-.PP
+.Sh "Edit RRAs"
+.IX Subsection "Edit RRAs"
 .Vb 3
 \& # Add a new RRA which stores 1 weeks worth of data at 30 minute intervals 
 \& # (336 data points)
@@ -273,17 +271,17 @@ RRD::Editor \- Standalone tool (no need for RRDs.pl) to create and edit RRD file
 .IX Header "DESCRIPTION"
 RRD:Editor implements most of the functionality of \s-1RRDTOOL\s0, apart from graphing, plus adds some new editing and portability features.  It aims to be portable and self-contained (no need for RRDs.pm).
 .PP
-RRD::Editor provides the ability to add/delete DSs and RRAs and to get/set most of the parameters in DSs and RRAs (renaming, resizing etc). It also allows the data values stored in each \s-1RRA\s0 to be inspected and changed individually.  It therefore provides almost complete control over the contents of an \s-1RRD\s0.
+RRD::Editor provides the ability to add/delete DSs and RRAs and to get/set most of the parameters in DSs and RRAs (renaming, resizing etc). It also allows the data values stored in each \s-1RRA\s0 to be inspected and changed individually.  That is, it provides almost complete control over the contents of an \s-1RRD\s0.
 .PP
-\&\s-1RRD\s0 files use a binary format (let's call it native-double) that is not portable across platforms.  RRD:Editor provides two portable file formats (portable-double and portable-single) that allow the exchange of files, and can freely convert \s-1RRD\s0 files between these three formats.
+The \s-1RRD\s0 files created by \s-1RRDTOOL\s0 use a binary format (let's call it \f(CW\*(C`native\-double\*(C'\fR) that is not portable across platforms.  In addition to this file format, RRD:Editor provides two new portable file formats (\f(CW\*(C`portable\-double\*(C'\fR and \f(CW\*(C`portable\-single\*(C'\fR) that allow the exchange of files.  RRD::Editor can freely convert \s-1RRD\s0 files between these three formats (\f(CW\*(C`native\-double\*(C'\fR,\f(CW\*(C`portable\-double\*(C'\fR and \f(CW\*(C`portable\-single\*(C'\fR).
 .PP
 Notes:
 .IP "\(bu" 4
-times must all be specified as unix timestamps (i.e. \-1d, \-1w etc don't work, and there is no @ option in rrdupdate)
+times must all be specified as unix timestamps (i.e. \-1d, \-1w etc don't work, and there is no @ option in rrdupdate).
 .IP "\(bu" 4
-full support for \s-1COUNTER\s0, \s-1GAUGE\s0, \s-1DERIVE\s0 and \s-1ABSOLUTE\s0 data-source types (\s-1COMPUTE\s0 type is only partially supported)
+there is full support for \s-1COUNTER\s0, \s-1GAUGE\s0, \s-1DERIVE\s0 and \s-1ABSOLUTE\s0 data-source types but the \s-1COMPUTE\s0 type is only partially supported.
 .IP "\(bu" 4
-full support for \s-1AVERAGE\s0, \s-1MIN\s0, \s-1MAX\s0, \s-1LAST\s0 \s-1RRA\s0 types (\s-1HWPREDCT\s0, \s-1MHWPREDICT\s0, \s-1SEASONAL\s0 etc types only partially supported)
+there is full support for \s-1AVERAGE\s0, \s-1MIN\s0, \s-1MAX\s0, \s-1LAST\s0 \s-1RRA\s0 types but the \s-1HWPREDCT\s0, \s-1MHWPREDICT\s0, \s-1SEASONAL\s0 etc types are only partially supported).
 .SH "METHODS"
 .IX Header "METHODS"
 .Sh "new"
@@ -299,18 +297,18 @@ Creates a new RRD::Editor object
 \& $rrd\->create($args);
 .Ve
 .PP
-The method will create a new \s-1RRD\s0 with the data-sources and RRAs specified by \f(CW$args\fR.   \f(CW$args\fR is a string that contains the same sort of command line arguments that would be passed to 'rrdtool create'.   The format for  \f(CW$args\fR is:
+The method will create a new \s-1RRD\s0 with the data-sources and RRAs specified by \f(CW$args\fR.   \f(CW$args\fR is a string that contains the same sort of command line arguments that would be passed to \f(CW\*(C`rrdtool create\*(C'\fR.   The format for  \f(CW$args\fR is:
 .PP
 [\-\-start|\-b start time] [\-\-step|\-s step] [\-\-format|\-f encoding] [DS:ds\-name:DST:heartbeat:min:max] [RRA:CF:xff:steps:rows]
 .PP
-where \s-1DST\s0 may be one of \s-1GAUGE\s0, \s-1COUNTER\s0, \s-1DERIVE\s0, \s-1ABSOLUTE\s0 and \s-1CF\s0 may be one of \s-1AVERAGE\s0, \s-1MIN\s0, \s-1MAX\s0, \s-1LAST\s0.  Possible values for encoding are native-double, portable-double, portable-single.  If omitted, defaults to native-double (the non-portable file format used by \s-1RRDTOOL\s0). See <http://oss.oetiker.ch/rrdtool/doc/rrdcreate.en.html> for further information.
+where \s-1DST\s0 may be one of \s-1GAUGE\s0, \s-1COUNTER\s0, \s-1DERIVE\s0, \s-1ABSOLUTE\s0 and \s-1CF\s0 may be one of \s-1AVERAGE\s0, \s-1MIN\s0, \s-1MAX\s0, \s-1LAST\s0.  Possible values for encoding are \f(CW\*(C`native\-double\*(C'\fR, \f(CW\*(C`portable\-double\*(C'\fR, \f(CW\*(C`portable\-single\*(C'\fR.  If omitted, defaults to \f(CW\*(C`native\-double\*(C'\fR (the non-portable file format used by \s-1RRDTOOL\s0). See <http://oss.oetiker.ch/rrdtool/doc/rrdcreate.en.html> for further information.
 .Sh "open"
 .IX Subsection "open"
 .Vb 1
 \& $rrd\->open($file_name);
 .Ve
 .PP
-Load the \s-1RRD\s0 in the file called \f(CW$file_name\fR.  Only the file header is loaded initially, to improve efficiency, with the body of the file subsequently loaded if needed.  The file format (native-double, portable-double etc) is detected automagically.
+Load the \s-1RRD\s0 in the file called \f(CW$file_name\fR.  Only the file header is loaded initially, to improve efficiency, with the body of the file subsequently loaded if needed.  The file format (\f(CW\*(C`native\-double\*(C'\fR, \f(CW\*(C`portable\-double\*(C'\fR etc) is detected automagically.
 .Sh "save"
 .IX Subsection "save"
 .Vb 3
@@ -319,9 +317,9 @@ Load the \s-1RRD\s0 in the file called \f(CW$file_name\fR.  Only the file header
 \& $rrd\->save($file_name, $encoding);
 .Ve
 .PP
-Save \s-1RRD\s0 to a file called \f(CW$file_name\fR with format specified by \f(CW$encoding\fR.  Possible values for \f(CW$encoding\fR are native-double, portable-double, portable-single.
+Save \s-1RRD\s0 to a file called \f(CW$file_name\fR with format specified by \f(CW$encoding\fR.  Possible values for \f(CW$encoding\fR are \f(CW"native\-double"\fR, \f(CW"portable\-double"\fR, \f(CW"portable\-single"\fR.
 .PP
-If omitted, \f(CW$encoding\fR defaults to the format of the file specified when calling \f(CW\*(C`open()\*(C'\fR, or to native-double if the \s-1RRD\s0 has just been created using \f(CW\*(C`create()\*(C'\fR.  native-double is the non-portable binary format used by \s-1RRDTOOL\s0.  portable-double is portable across platforms and stores data as double\- precision values. portable-single is portable across platforms and stores data as single-precision values (reducing the \s-1RRD\s0 file size by approximately half).  If interested in the gory details, portable-double is just the native-double format used by Intel 32\-bit platforms (i.e. little-endian byte ordering, 32 bit integers, 64 bit \s-1IEEE\s0 754 doubles, storage aligned to 32 but boundaries) \- an arbitrary choice, but not unreasonable since Intel platforms are probably the most widespread at the moment.
+If omitted, \f(CW$encoding\fR defaults to the format of the file specified when calling \f(CW\*(C`open()\*(C'\fR, or to \f(CW\*(C`native\-double\*(C'\fR if the \s-1RRD\s0 has just been created using \f(CW\*(C`create()\*(C'\fR.  \f(CW\*(C`native\-double\*(C'\fR is the non-portable binary format used by \s-1RRDTOOL\s0.  \f(CW\*(C`portable\-double\*(C'\fR is portable across platforms and stores data as double-precision values. \f(CW\*(C`portable\-single\*(C'\fR is portable across platforms and stores data as single-precision values (reducing the \s-1RRD\s0 file size by approximately half).  If interested in the gory details, \f(CW\*(C`portable\-double\*(C'\fR is just the native-double format used by Intel 32\-bit platforms (i.e. little-endian byte ordering, 32 bit integers, 64 bit \s-1IEEE\s0 754 doubles, storage aligned to 32 bit boundaries) \- an arbitrary choice, but not unreasonable since Intel platforms are probably the most widespread at the moment, and compatible with web tools such as javascriptRRD <http://javascriptrrd.sourceforge.net/>.
 .PP
 If the \s-1RRD\s0 was opened using \f(CW\*(C`open()\*(C'\fR, then \f(CW$file_name\fR is optional and if omitted \f(CW\*(C`$rrd\-\*(C'\fR\fIsave()\fR> will save the \s-1RRD\s0 to the same file as it was read from.
 .Sh "close"
@@ -337,7 +335,7 @@ Close an \s-1RRD\s0 file accessed using \f(CW\*(C`open()\*(C'\fR or \f(CW\*(C`sa
 \& my $info = $rrd\->info();
 .Ve
 .PP
-Returns a string containing information on the DSs and RRAs in the \s-1RRD\s0 (but not showing the data values stored in the RRAs).  Also shows details of the file format (native-double, portable-double etc) if the \s-1RRD\s0 was read from a file.
+Returns a string containing information on the DSs and RRAs in the \s-1RRD\s0 (but not showing the data values stored in the RRAs).  Also shows details of the file format (\f(CW\*(C`native\-double\*(C'\fR, \f(CW\*(C`portable\-double\*(C'\fR etc) if the \s-1RRD\s0 was read from a file.
 .Sh "dump"
 .IX Subsection "dump"
 .Vb 2
@@ -352,7 +350,7 @@ Returns a string containing the complete contents of the \s-1RRD\s0 (including d
 \& my $vals = $rrd\->fetch($args);
 .Ve
 .PP
-Returns a string containing a table of measurement data from the \s-1RRD\s0.  \f(CW$arg\fRs is a string that contains the same sort of command line arguments that would be passed to 'rrdtool fetch'.   The format for \f(CW$args\fR is:
+Returns a string containing a table of measurement data from the \s-1RRD\s0.  \f(CW$arg\fRs is a string that contains the same sort of command line arguments that would be passed to \f(CW\*(C`rrdtool fetch\*(C'\fR.   The format for \f(CW$args\fR is:
 .PP
 .Vb 1
 \& CF [\-\-resolution|\-r resolution] [\-\-start|\-s start] [\-\-end|\-e end]
@@ -365,7 +363,7 @@ where \f(CW\*(C`CF\*(C'\fR may be one of \s-1AVERAGE\s0, \s-1MIN\s0, \s-1MAX\s0,
 \& $rrd\->update($args);
 .Ve
 .PP
-Feeds new data values into the \s-1RRD\s0.   \f(CW$args\fR is a string that contains the same sort of command line arguments that would be passed to 'rrdtool update'.   The format for \f(CW$args\fR is:
+Feeds new data values into the \s-1RRD\s0.   \f(CW$args\fR is a string that contains the same sort of command line arguments that would be passed to \f(CW\*(C`rrdtool update\*(C'\fR.   The format for \f(CW$args\fR is:
 .PP
 .Vb 1
 \& [\-\-template:\-t ds\-name[:ds\-name]...] N|timestamp:value[:value...] [timestamp:value[:value...] ...]
@@ -373,7 +371,7 @@ Feeds new data values into the \s-1RRD\s0.   \f(CW$args\fR is a string that cont
 .PP
 See <http://oss.oetiker.ch/rrdtool/doc/rrdupdate.en.html> for further details.
 .PP
-Since\f(CW\*(C` $rrd\-\*(C'\fR\fIupdate()\fR> is often called repeatedly, for greater efficiency in-place updating of \s-1RRD\s0 files is used where possible.  To understand this, a little knowledge of the \s-1RRD\s0 file format is needed.  \s-1RRD\s0 files consist of a small header containing details of the DSs and \s-1RRA\s0, and a large body containing the data values stored in the RRAs.  Reading the body into memory is relatively costly since it is much larger than the header, and so is only done by RRD::Editor on an \*(L"as-needed\*(R" basis.  So long as the body has not yet been read into memory when \f(CW\*(C`update()\*(C'\fR is called, \f(CW\*(C`update()\*(C'\fR will update the file on disk i.e. without reading in the body.  In this case there is no need to call \f(CW\*(C`save()\*(C'\fR.   If the body has been loaded into memory when \f(CW\*(C`update()\*(C'\fR is  called, then the copy of the data stored in memory will be updated and the file on disk left untouched \- a call to \f(CW\*(C`save()\*(C'\fR is then needed to freshen the file stored on disk.  Seems complicated, but its actually ok in practice.  If all you want to do is efficiently update a file, just use the following formula:
+Since\f(CW\*(C`update()\*(C'\fR is often called repeatedly, for greater efficiency in-place updating of \s-1RRD\s0 files is used where possible.  To understand this, a little knowledge of the \s-1RRD\s0 file format is needed.  \s-1RRD\s0 files consist of a small header containing details of the DSs and \s-1RRA\s0, and a large body containing the data values stored in the RRAs.  Reading the body into memory is relatively costly since it is much larger than the header, and so is only done by RRD::Editor on an \*(L"as-needed\*(R" basis.  So long as the body has not yet been read into memory when \f(CW\*(C`update()\*(C'\fR is called, \f(CW\*(C`update()\*(C'\fR will update the file on disk i.e. without reading in the body.  In this case there is no need to call \f(CW\*(C`save()\*(C'\fR.   If the body has been loaded into memory when \f(CW\*(C`update()\*(C'\fR is  called, then the copy of the data stored in memory will be updated and the file on disk left untouched \- a call to \f(CW\*(C`save()\*(C'\fR is then needed to freshen the file stored on disk.  Seems complicated, but its actually ok in practice.  If all you want to do is efficiently update a file, just use the following formula:
 .PP
 .Vb 3
 \& $rrd\->open($file_name);
@@ -630,18 +628,18 @@ The tag \f(CW\*(C`all\*(C'\fR is available to easily export everything:
 .Ve
 .SH "Portability/Compatibility with RRDTOOL"
 .IX Header "Portability/Compatibility with RRDTOOL"
-The RRD::Editor code is portable and so long as you stick to using the portable-double and portable-single file formats the \s-1RRD\s0 files generated will also be portable.  Portability issues arise when the native-double file format is used to store RRDs.  This format tries to be compatible with the non-portable binary format used by \s-1RRDTOOL\s0, which requires RRD::Editor to figure out nasty low-level details of the platform it is running on (byte ordering, byte alignment, representation used for doubles etc).   To date, RRD::Editor and \s-1RRDTOOL\s0 have been confirmed compatible (i.e. they can read each others \s-1RRD\s0 files) on the following platforms:
+The RRD::Editor code is portable, and so long as you stick to using the portable-double and portable-single file formats the \s-1RRD\s0 files generated will also be portable.  Portability issues arise when the \f(CW\*(C`native\-double\*(C'\fR file format of RRD::Editor is used to store RRDs.  This format tries to be compatible with the non-portable binary format used by \s-1RRDTOOL\s0, which requires RRD::Editor to figure out nasty low-level details of the platform it is running on (byte ordering, byte alignment, representation used for doubles etc).   To date, RRD::Editor and \s-1RRDTOOL\s0 have been confirmed compatible (i.e. they can read each others \s-1RRD\s0 files) on the following platforms:
 .PP
-Intel x686 32bit, Intel x686 64bit, \s-1ARM\s0 32bit
+Intel 686 32bit, AMD64/Intel x86 64bit, \s-1ARM\s0 32bit (Versatile/PB, little-endian), \s-1MIPS\s0 32bit (Malta), PowerPC 32bit
 .PP
-If your platform is not listed, there is a good chance things will \*(L"just work\*(R" but double checking that \s-1RRDTOOL\s0 can read the native-double \s-1RRD\s0 files generated by RRD::Editor, and vice-versa, would be a good idea if that's important to you.
+If your platform is not listed, there is a good chance things will \*(L"just work\*(R" but double checking that \s-1RRDTOOL\s0 can read the \f(CW\*(C`native\-double\*(C'\fR format \s-1RRD\s0 files generated by RRD::Editor, and vice-versa, would be a good idea if that's important to you.
 .SH "SEE ALSO"
 .IX Header "SEE ALSO"
 RRD::Simple, RRDTool::OO, RRDs,
 <http://www.rrdtool.org>, examples/*.pl,
 .SH "VERSION"
 .IX Header "VERSION"
-Ver 0.01_3
+Ver 0.01_4
 .SH "AUTHOR"
 .IX Header "AUTHOR"
 Doug Leith

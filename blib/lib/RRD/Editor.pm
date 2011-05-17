@@ -19,7 +19,7 @@ use Config;
 
 use vars qw($VERSION @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = '0.01_3';
+$VERSION = '0.01_4';
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
@@ -39,6 +39,7 @@ use constant PORTABLE_LONG_EL_SIZE      => 4; # 32 bits
 use constant PORTABLE_SINGLE_EL_SIZE    => 4; # IEEE 754 single is 32 bits
 use constant PORTABLE_DOUBLE_EL_SIZE    => 8; # IEEE 754 double is 64 bits
 
+# sort out the float cookie used by RRD files
 sub _cookie {
    # Getting RRD file float cookie right is a little tricky because Perl rounds 8.642135E130 up to 8.6421500000000028e+130 on 
    # Intel 32 bit machines, and rounds to something else on 64 bit machines, and neither of these give the same bit sequence as 
@@ -56,26 +57,40 @@ return pack("d",_cookie_C());
     # Inline not available.
     # Try approach that avoids need for Inline module.  Ok so long as machine uses IEEE doubles (i.e. all modern machines) 
     # and either little-endian or big-endian byte order (i.e. most modern machines):
-    my $cookie=chr(47). chr(37). chr(192). chr(199). chr(67). chr(43). chr(31). chr(91); # little-endian order
     if (substr($Config{byteorder},0,4) eq "1234") {
-        if ($Config{archname} =~ m/arm/) {
-            # A hack for 32 bit ARM processors.  Are little-endian, but change the byte order of floats
-            # alignment with 32 bit boundaries.  This affects the float cookie byte ordering.
+        if ($Config{myarchname} =~ m/^arm/i && NATIVE_LONG_EL_SIZE==4) {
+            # For 32 bit ARM processors.  ARM changes the byte order of doubles
+            # depending on alignment with 32 bit boundaries - this only affects the float cookie byte ordering, other .
             return chr(67). chr(43). chr(31). chr(91). chr(47). chr(37). chr(192). chr(199); 
         } else {    
-            return $cookie; # regular little endian
+            return chr(47). chr(37). chr(192). chr(199). chr(67). chr(43). chr(31). chr(91); # regular little endian
         }
     } elsif (substr($Config{byteorder},0,4) eq "4321") {
-        return reverse($cookie); # big endian
+        return chr(91). chr(31). chr(43). chr(67). chr(199). chr(192). chr(37). chr(47); # big endian
     } else {
         cluck("Warning: To work with native (non-portable) RRD files, you need to install the perl Inline C module (e.g. by typing 'cpan -i Inline')\n");
-        return $cookie;
+        return chr(67). chr(43). chr(31). chr(91). chr(47). chr(37). chr(192). chr(199);
     } 
 }
 use constant  DOUBLE_FLOATCOOKIE                =>   8.642135E130;
 use constant  NATIVE_BINARY_FLOATCOOKIE         =>   _cookie();
 use constant  PORTABLE_BINARY_FLOATCOOKIE       =>   chr(47). chr(37). chr(192). chr(199). chr(67). chr(43). chr(31). chr(91); # portable format is always little-endian 
 use constant  SINGLE_FLOATCOOKIE                =>   8.6421343830016e+13;  # cookie to use when storing floats in single precision as +130 exponent on old cookie is too large
+
+sub _default_fileformat {
+   # define the default file format
+    if ($Config{myarchname} =~ m/^(mips|ppc)/i && NATIVE_LONG_EL_SIZE==4) { # TODO: does this check work ok on non-Linux/Darwin systems ?
+                                                                            # Only affects behaviour when writing new files from scratch, 
+                                                                            # otherwise can figure out the right format to use when read 
+                                                                            # an existing file
+        # For 32 bit MIPS and PowerPC machines, align long ints on 32 bit boundaries and doubles on 64 bit boundaries
+        return "native-double-mips";
+    } else {
+        # Otherwise, align longs/doubles on 32 bit machines on 32 bit boundaries, and 64 bit machines on 64 bit boundaries.
+        return "native-double";
+    }
+}
+
 # check whether pack supports little-endian usage:
 eval {
     my $test=pack("d<",\(DOUBLE_FLOATCOOKIE));
@@ -118,7 +133,7 @@ sub _packd {
     my $encoding=$_[0]->{encoding};
     if (defined($_[2])) {$encoding=$_[2];}
 
-    if ($encoding eq "native-double") {
+    if ($encoding eq "native-double" || $encoding eq "native-double-mips") {
         # backwards-compatible (with RRDTOOL) RRD format
         return pack("d*", @{$_[1]});
     } elsif ($encoding eq "native-single") {
@@ -203,7 +218,7 @@ sub _unpackd {
     my $encoding=$_[0]->{encoding};
     if (defined($_[2])) {$encoding=$_[2];}
   
-    if ($encoding eq "native-double") {
+    if ($encoding eq "native-double" || $encoding eq "native-double-mips") {
         # backwards-compatible (with RRDTOOL) RRD format
         return unpack("d*", $_[1]);
     } elsif ($encoding eq "native-single" ) {
@@ -265,7 +280,7 @@ sub _unpackd {
 sub _packlongchar {
     # pack encoding specification for integers.  no need for manual packing/unpacking of integers as agreed portable formats already available
     my $self=$_[0];
-    if ($self->{encoding} eq "native-double") {
+    if ($self->{encoding} eq "native-double" || $self->{encoding} eq "native-double-mips") {
         # backwards-compatible (with RRDTOOL) RRD format
         return "L!"; # native long int
     } else {
@@ -281,16 +296,27 @@ sub _sizes {
     
     $self->{OFFSET} = 12;  # byte position of start of float cookie. 
     $self->{RRA_DEL_PAD}    = 0;  # for byte alignment in RRA_DEF after char(20) string
-    if ($self->{encoding} eq "native-double") {
+    $self->{STAT_PAD} = 0; # for byte alignment at end of static header.  
+    $self->{RRA_PAD} = 0; # for byte alignment at end of RRAD_DEF float array
+    if ($self->{encoding} eq "native-double" ) {
         $self->{LONG_EL_SIZE} = NATIVE_LONG_EL_SIZE; 
         $self->{FLOAT_EL_SIZE}= NATIVE_DOUBLE_EL_SIZE; 
         $self->{COOKIE} = NATIVE_BINARY_FLOATCOOKIE;
         if ( NATIVE_LONG_EL_SIZE == 8) {
-            # Hack. Intel/Linux 64 bits platforms add padd bytes.  We use the long int size to trigger this - not unreasonable since the byte alignment seems based on 
-            # the size of long ints on Intel/Linux platforms.   Is this ok for other platforms ?  Is there a more general/flexible approach ?
+            # We assume byte alignment is carried out wrt long ints i.e 32 bits on 32 bit machines and 64 bits on 64 bit machines.  
             $self->{OFFSET}         = 16; # for byte alignment of the float cookie
             $self->{RRA_DEL_PAD}    = 4;  # for byte alignment in RRA_DEF after char(20) string
         } 
+    } elsif ($self->{encoding} eq "native-double-mips") {
+        # native-double-mips is to deal with MIPS which align long ints at 32 bits boundaries and
+        # doubles at 64 bit boundaries.  
+        $self->{LONG_EL_SIZE} = NATIVE_LONG_EL_SIZE; 
+        $self->{FLOAT_EL_SIZE}= NATIVE_DOUBLE_EL_SIZE; 
+        $self->{COOKIE} = NATIVE_BINARY_FLOATCOOKIE;
+        $self->{OFFSET}         = 16; # for byte alignment of the float cookie
+        $self->{RRA_DEL_PAD}    = 0;  # for byte alignment in RRA_DEF after char(20) string
+        $self->{STAT_PAD}       = 4;
+        $self->{RRA_PAD}        = 4;
     } elsif ($self->{encoding} eq "littleendian-single" || $self->{encoding} eq "native-single" || $self->{encoding} eq "portable-single" || $self->{encoding} eq "ieee-32") {
         $self->{LONG_EL_SIZE} = PORTABLE_LONG_EL_SIZE;
         $self->{FLOAT_EL_SIZE}= PORTABLE_SINGLE_EL_SIZE; # 32 bits
@@ -303,12 +329,12 @@ sub _sizes {
     }        
     $self->{DIFF_SIZE}          = $self->{FLOAT_EL_SIZE} - $self->{LONG_EL_SIZE};     
     $self->{STAT_HEADER_SIZE}   = $self->{OFFSET} + $self->{FLOAT_EL_SIZE} + 3 * $self->{LONG_EL_SIZE};
-    $self->{STAT_HEADER_SIZE0}  = $self->{STAT_HEADER_SIZE} + 10 * $self->{FLOAT_EL_SIZE}; #112;
+    $self->{STAT_HEADER_SIZE0}  = $self->{STAT_HEADER_SIZE} + 10 * $self->{FLOAT_EL_SIZE} + $self->{STAT_PAD};
     $self->{RRA_PTR_EL_SIZE}    = $self->{LONG_EL_SIZE};
     $self->{CDP_PREP_EL_SIZE}   = 10 * $self->{FLOAT_EL_SIZE};    
     $self->{PDP_PREP_PAD}       = 2;  # for byte alignment of char(30) string in PDP_PREP
     $self->{PDP_PREP_EL_SIZE}   = 30 + $self->{PDP_PREP_PAD} + 10 * $self->{FLOAT_EL_SIZE};    
-    $self->{RRA_DEF_EL_SIZE}    = 20 +  $self->{RRA_DEL_PAD} + 2 * $self->{LONG_EL_SIZE} + 10 * $self->{FLOAT_EL_SIZE} ;
+    $self->{RRA_DEF_EL_SIZE}    = 20 +  $self->{RRA_DEL_PAD} + 2 * $self->{LONG_EL_SIZE} + 10 * $self->{FLOAT_EL_SIZE} +$self->{RRA_PAD};
     $self->{DS_DEF_IDX}         = $self->{STAT_HEADER_SIZE0};
     $self->{DS_EL_SIZE}         = 40 + 10 * $self->{FLOAT_EL_SIZE} ;  
     $self->{LIVE_HEAD_SIZE}     = 2 * $self->{LONG_EL_SIZE};  
@@ -345,7 +371,7 @@ sub _extractRRAdefs {
     for ($i=0; $i<$rrd->{rra_cnt}; $i++) {
         my $rra={}; 
         ($rra->{name}, $rra->{row_cnt}, $rra->{pdp_cnt})= unpack("Z".(20+$self->{RRA_DEL_PAD})." $L $L",substr(${$header},$idx,20+$self->{RRA_DEL_PAD}+2*$self->{LONG_EL_SIZE}));
-        ($rra->{xff})= _unpackd($self,substr(${$header},$idx+20+$self->{RRA_DEL_PAD} + 2*$self->{LONG_EL_SIZE}, $self->{FLOAT_EL_SIZE}));
+        ($rra->{xff})= _unpackd($self,substr(${$header},$idx+20+$self->{RRA_DEL_PAD} + 2*$self->{LONG_EL_SIZE}+$self->{RRA_PAD}, $self->{FLOAT_EL_SIZE}));
         $rrd->{rra}[$i] = $rra;
         $idx+=$self->{RRA_DEF_EL_SIZE};
         #print $rra->{name}," ",$rra->{row_cnt}," ",$rra->{pdp_cnt}," ",$rra->{xff},"\n";
@@ -1348,8 +1374,8 @@ sub _saveheader {
         substr($header,$idx,20+$self->{RRA_DEL_PAD}+2*$self->{LONG_EL_SIZE},pack("Z".(20+$self->{RRA_DEL_PAD})." $L $L",$self->{rrd}->{rra}[$i]->{name}, $self->{rrd}->{rra}[$i]->{row_cnt}, $self->{rrd}->{rra}[$i]->{pdp_cnt}));
         $idx+=20+$self->{RRA_DEL_PAD}+2*$self->{LONG_EL_SIZE};
         my @xff=($self->{rrd}->{rra}[$i]->{xff});
-        substr($header,$idx,$self->{FLOAT_EL_SIZE},_packd($self,\@xff));
-        $idx += $self->{FLOAT_EL_SIZE}*10;
+        substr($header,$idx+$self->{RRA_PAD},$self->{FLOAT_EL_SIZE},_packd($self,\@xff));
+        $idx += $self->{FLOAT_EL_SIZE}*10+$self->{RRA_PAD};
     }
     # live header
     substr($header,$idx,2*$self->{LONG_EL_SIZE},pack("$L $L", $self->{rrd}->{last_up},0));
@@ -1453,7 +1479,8 @@ sub create {
     # create a new RRD
     my ($self, $args_str) = @_;  my $rrd=$self->{rrd};
 
-    my $last_up=time(); my $pdp_step=300; my $encoding="native-double"; # default to backward compatible encoding.
+    my $last_up=time(); my $pdp_step=300; 
+    my $encoding=_default_fileformat(); # default to RRDTOOL compatible encoding.
     my $ret; my $args;
     ($ret, $args) = GetOptionsFromString($args_str,
     "start|b:i" => \$last_up,
@@ -1536,7 +1563,8 @@ sub open {
     #my ($x, $y, $byte1, $byte2, $byte3, $byte4, $byte5, $byte6, $byte7, $byte8) =unpack("Z4 Z5 x![L!] C C C C C C C C",substr($staticheader,0,length($staticheader)));
     #print $byte1, " ", $byte2, " ",$byte3," ", $byte4," ", $byte5," ", $byte6," ", $byte7," ", $byte8,"\n";
     $self->{encoding}=undef;
-    my ($x, $y, $file_floatcookie_native_double) =unpack("Z4 Z5 x![L!] d",substr($staticheader,0,length($staticheader)));
+    (my $x, my $y, my $file_floatcookie_native_double) =unpack("Z4 Z5 x![L!] d",substr($staticheader,0,length($staticheader)));
+    ($x, $y, my $file_floatcookie_native_double_mips) =unpack("Z4 Z5 x![d] d",substr($staticheader,0,length($staticheader)));
     $file_floatcookie_native_double = sprintf("%0.6e", $file_floatcookie_native_double);
     my ($t)=_unpackd($self,substr($staticheader,12,PORTABLE_SINGLE_EL_SIZE),"native-single");
     my $file_floatcookie_native_single=sprintf("%0.6e",$t); 
@@ -1556,6 +1584,8 @@ sub open {
     my $singlecookie=sprintf("%0.6e",SINGLE_FLOATCOOKIE);
     if ($file_floatcookie_native_double eq $cookie) {
         $self->{encoding} = "native-double";  
+    } elsif ($file_floatcookie_native_double_mips eq  $cookie ) {
+        $self->{encoding} = "native-double-mips"; 
     } elsif ($file_floatcookie_native_single eq  $singlecookie ) {
         $self->{encoding} = "native-single"; 
     } elsif ($PACK_LITTLE_ENDIAN_SUPPORT>0 && $file_floatcookie_littleendian_double eq $cookie) {
@@ -1622,7 +1652,7 @@ sub open {
  
 =head1 NAME
  
-RRD::Editor - Standalone tool (no need for RRDs.pl) to create and edit RRD files.
+RRD::Editor - Standalone tool (no need for RRDs.pm) to create and edit RRD files.
  
 =head1 SYNOPSIS
 
@@ -1677,7 +1707,7 @@ RRD::Editor - Standalone tool (no need for RRDs.pl) to create and edit RRD files
  otherwise when creating an RRD.
  print $rrd->minstep()
  
-==head2 Edit DSs
+=head2 Edit DSs
  
  # Add a new data-source called bytes.  Argument format is the same as $rrd->create().
  $rrd->add_DS("DS:bytes:GAUGE:600:U:U");
@@ -1716,7 +1746,7 @@ RRD::Editor - Standalone tool (no need for RRDs.pl) to create and edit RRD files
  # Set the maximum value allowed for measurements from data-source bytesOut to be 100
  $rrd->set_DS_max("bytesOut",100);
  
-==head2 Edit RRAs 
+=head2 Edit RRAs 
  
  # Add a new RRA which stores 1 weeks worth of data at 30 minute intervals 
  # (336 data points)
@@ -1762,19 +1792,19 @@ RRD::Editor - Standalone tool (no need for RRDs.pl) to create and edit RRD files
 
 RRD:Editor implements most of the functionality of RRDTOOL, apart from graphing, plus adds some new editing and portability features.  It aims to be portable and self-contained (no need for RRDs.pm).
  
-RRD::Editor provides the ability to add/delete DSs and RRAs and to get/set most of the parameters in DSs and RRAs (renaming, resizing etc). It also allows the data values stored in each RRA to be inspected and changed individually.  It therefore provides almost complete control over the contents of an RRD.
+RRD::Editor provides the ability to add/delete DSs and RRAs and to get/set most of the parameters in DSs and RRAs (renaming, resizing etc). It also allows the data values stored in each RRA to be inspected and changed individually.  That is, it provides almost complete control over the contents of an RRD.
  
-RRD files use a binary format (let's call it native-double) that is not portable across platforms.  RRD:Editor provides two portable file formats (portable-double and portable-single) that allow the exchange of files, and can freely convert RRD files between these three formats.  
+The RRD files created by RRDTOOL use a binary format (let's call it C<native-double>) that is not portable across platforms.  In addition to this file format, RRD:Editor provides two new portable file formats (C<portable-double> and C<portable-single>) that allow the exchange of files.  RRD::Editor can freely convert RRD files between these three formats (C<native-double>,C<portable-double> and C<portable-single>).  
   
 Notes:
 
 =over
 
-=item * times must all be specified as unix timestamps (i.e. -1d, -1w etc don't work, and there is no @ option in rrdupdate)
+=item * times must all be specified as unix timestamps (i.e. -1d, -1w etc don't work, and there is no @ option in rrdupdate).
 
-=item * full support for COUNTER, GAUGE, DERIVE and ABSOLUTE data-source types (COMPUTE type is only partially supported)
+=item * there is full support for COUNTER, GAUGE, DERIVE and ABSOLUTE data-source types but the COMPUTE type is only partially supported.
 
-=item * full support for AVERAGE, MIN, MAX, LAST RRA types (HWPREDCT, MHWPREDICT, SEASONAL etc types only partially supported)
+=item * there is full support for AVERAGE, MIN, MAX, LAST RRA types but the HWPREDCT, MHWPREDICT, SEASONAL etc types are only partially supported).
 
 =back
  
@@ -1790,17 +1820,17 @@ Creates a new RRD::Editor object
  
  $rrd->create($args);
  
-The method will create a new RRD with the data-sources and RRAs specified by C<$args>.   C<$args> is a string that contains the same sort of command line arguments that would be passed to 'rrdtool create'.   The format for  C<$args> is:
+The method will create a new RRD with the data-sources and RRAs specified by C<$args>.   C<$args> is a string that contains the same sort of command line arguments that would be passed to C<rrdtool create>.   The format for  C<$args> is:
  
 [--start|-b start time] [--step|-s step] [--format|-f encoding] [DS:ds-name:DST:heartbeat:min:max] [RRA:CF:xff:steps:rows]
  
-where DST may be one of GAUGE, COUNTER, DERIVE, ABSOLUTE and CF may be one of AVERAGE, MIN, MAX, LAST.  Possible values for encoding are native-double, portable-double, portable-single.  If omitted, defaults to native-double (the non-portable file format used by RRDTOOL). See L<http://oss.oetiker.ch/rrdtool/doc/rrdcreate.en.html> for further information.
+where DST may be one of GAUGE, COUNTER, DERIVE, ABSOLUTE and CF may be one of AVERAGE, MIN, MAX, LAST.  Possible values for encoding are C<native-double>, C<portable-double>, C<portable-single>.  If omitted, defaults to C<native-double> (the non-portable file format used by RRDTOOL). See L<http://oss.oetiker.ch/rrdtool/doc/rrdcreate.en.html> for further information.
  
 =head2 open
  
  $rrd->open($file_name);
  
-Load the RRD in the file called C<$file_name>.  Only the file header is loaded initially, to improve efficiency, with the body of the file subsequently loaded if needed.  The file format (native-double, portable-double etc) is detected automagically.
+Load the RRD in the file called C<$file_name>.  Only the file header is loaded initially, to improve efficiency, with the body of the file subsequently loaded if needed.  The file format (C<native-double>, C<portable-double> etc) is detected automagically.
 
 =head2 save
  
@@ -1808,9 +1838,9 @@ Load the RRD in the file called C<$file_name>.  Only the file header is loaded i
  $rrd->save($file_name);
  $rrd->save($file_name, $encoding);
  
-Save RRD to a file called $file_name with format specified by C<$encoding>.  Possible values for C<$encoding> are native-double, portable-double, portable-single.  
+Save RRD to a file called $file_name with format specified by C<$encoding>.  Possible values for C<$encoding> are C<"native-double">, C<"portable-double">, C<"portable-single">.  
  
-If omitted, C<$encoding> defaults to the format of the file specified when calling C<open()>, or to native-double if the RRD has just been created using C<create()>.  native-double is the non-portable binary format used by RRDTOOL.  portable-double is portable across platforms and stores data as double- precision values. portable-single is portable across platforms and stores data as single-precision values (reducing the RRD file size by approximately half).  If interested in the gory details, portable-double is just the native-double format used by Intel 32-bit platforms (i.e. little-endian byte ordering, 32 bit integers, 64 bit IEEE 754 doubles, storage aligned to 32 but boundaries) - an arbitrary choice, but not unreasonable since Intel platforms are probably the most widespread at the moment.
+If omitted, C<$encoding> defaults to the format of the file specified when calling C<open()>, or to C<native-double> if the RRD has just been created using C<create()>.  C<native-double> is the non-portable binary format used by RRDTOOL.  C<portable-double> is portable across platforms and stores data as double-precision values. C<portable-single> is portable across platforms and stores data as single-precision values (reducing the RRD file size by approximately half).  If interested in the gory details, C<portable-double> is just the native-double format used by Intel 32-bit platforms (i.e. little-endian byte ordering, 32 bit integers, 64 bit IEEE 754 doubles, storage aligned to 32 bit boundaries) - an arbitrary choice, but not unreasonable since Intel platforms are probably the most widespread at the moment, and compatible with web tools such as javascriptRRD L<http://javascriptrrd.sourceforge.net/>.
  
 If the RRD was opened using C<open()>, then C<$file_name> is optional and if omitted C<$rrd->save()> will save the RRD to the same file as it was read from.
 
@@ -1824,7 +1854,7 @@ Close an RRD file accessed using C<open()> or C<save()>.  Calling C<close()> flu
  
  my $info = $rrd->info();
  
-Returns a string containing information on the DSs and RRAs in the RRD (but not showing the data values stored in the RRAs).  Also shows details of the file format (native-double, portable-double etc) if the RRD was read from a file.
+Returns a string containing information on the DSs and RRAs in the RRD (but not showing the data values stored in the RRAs).  Also shows details of the file format (C<native-double>, C<portable-double> etc) if the RRD was read from a file.
  
 =head2 dump
  
@@ -1837,7 +1867,7 @@ Returns a string containing the complete contents of the RRD (including data) in
  
  my $vals = $rrd->fetch($args);
  
-Returns a string containing a table of measurement data from the RRD.  C<$arg>s is a string that contains the same sort of command line arguments that would be passed to 'rrdtool fetch'.   The format for C<$args> is:
+Returns a string containing a table of measurement data from the RRD.  C<$arg>s is a string that contains the same sort of command line arguments that would be passed to C<rrdtool fetch>.   The format for C<$args> is:
  
  CF [--resolution|-r resolution] [--start|-s start] [--end|-e end] 
  
@@ -1847,13 +1877,13 @@ where C<CF> may be one of AVERAGE, MIN, MAX, LAST.  See L<http://oss.oetiker.ch/
  
  $rrd->update($args);
  
-Feeds new data values into the RRD.   C<$args> is a string that contains the same sort of command line arguments that would be passed to 'rrdtool update'.   The format for C<$args> is:
+Feeds new data values into the RRD.   C<$args> is a string that contains the same sort of command line arguments that would be passed to C<rrdtool update>.   The format for C<$args> is:
 
  [--template:-t ds-name[:ds-name]...] N|timestamp:value[:value...] [timestamp:value[:value...] ...]
  
 See L<http://oss.oetiker.ch/rrdtool/doc/rrdupdate.en.html> for further details.
  
-SinceC< $rrd->update()> is often called repeatedly, for greater efficiency in-place updating of RRD files is used where possible.  To understand this, a little knowledge of the RRD file format is needed.  RRD files consist of a small header containing details of the DSs and RRA, and a large body containing the data values stored in the RRAs.  Reading the body into memory is relatively costly since it is much larger than the header, and so is only done by RRD::Editor on an "as-needed" basis.  So long as the body has not yet been read into memory when C<update()> is called, C<update()> will update the file on disk i.e. without reading in the body.  In this case there is no need to call C<save()>.   If the body has been loaded into memory when C<update()> is  called, then the copy of the data stored in memory will be updated and the file on disk left untouched - a call to C<save()> is then needed to freshen the file stored on disk.  Seems complicated, but its actually ok in practice.  If all you want to do is efficiently update a file, just use the following formula:
+SinceC<update()> is often called repeatedly, for greater efficiency in-place updating of RRD files is used where possible.  To understand this, a little knowledge of the RRD file format is needed.  RRD files consist of a small header containing details of the DSs and RRA, and a large body containing the data values stored in the RRAs.  Reading the body into memory is relatively costly since it is much larger than the header, and so is only done by RRD::Editor on an "as-needed" basis.  So long as the body has not yet been read into memory when C<update()> is called, C<update()> will update the file on disk i.e. without reading in the body.  In this case there is no need to call C<save()>.   If the body has been loaded into memory when C<update()> is  called, then the copy of the data stored in memory will be updated and the file on disk left untouched - a call to C<save()> is then needed to freshen the file stored on disk.  Seems complicated, but its actually ok in practice.  If all you want to do is efficiently update a file, just use the following formula:
  
  $rrd->open($file_name);
  $rrd->update($args);
@@ -2075,11 +2105,11 @@ The tag C<all> is available to easily export everything:
  
 =head1 Portability/Compatibility with RRDTOOL
  
-The RRD::Editor code is portable and so long as you stick to using the portable-double and portable-single file formats the RRD files generated will also be portable.  Portability issues arise when the native-double file format is used to store RRDs.  This format tries to be compatible with the non-portable binary format used by RRDTOOL, which requires RRD::Editor to figure out nasty low-level details of the platform it is running on (byte ordering, byte alignment, representation used for doubles etc).   To date, RRD::Editor and RRDTOOL have been confirmed compatible (i.e. they can read each others RRD files) on the following platforms:
+The RRD::Editor code is portable, and so long as you stick to using the portable-double and portable-single file formats the RRD files generated will also be portable.  Portability issues arise when the C<native-double> file format of RRD::Editor is used to store RRDs.  This format tries to be compatible with the non-portable binary format used by RRDTOOL, which requires RRD::Editor to figure out nasty low-level details of the platform it is running on (byte ordering, byte alignment, representation used for doubles etc).   To date, RRD::Editor and RRDTOOL have been confirmed compatible (i.e. they can read each others RRD files) on the following platforms:
 
-Intel x686 32bit, Intel x686 64bit, ARM 32bit
+Intel 686 32bit, AMD64/Intel x86 64bit, ARM 32bit (Versatile/PB, little-endian), MIPS 32bit (Malta), PowerPC 32bit
  
-If your platform is not listed, there is a good chance things will "just work" but double checking that RRDTOOL can read the native-double RRD files generated by RRD::Editor, and vice-versa, would be a good idea if that's important to you.
+If your platform is not listed, there is a good chance things will "just work" but double checking that RRDTOOL can read the C<native-double> format RRD files generated by RRD::Editor, and vice-versa, would be a good idea if that's important to you.
  
 =head1 SEE ALSO
 
@@ -2088,7 +2118,7 @@ L<http://www.rrdtool.org>, examples/*.pl,
  
 =head1 VERSION
  
-Ver 0.01_3
+Ver 0.01_4
  
 =head1 AUTHOR
  
