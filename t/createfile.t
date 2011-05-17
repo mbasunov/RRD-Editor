@@ -23,8 +23,8 @@ $j+=300; ok($rrd->update("$j:67:1.0:789:2"));
 
 # check that RRD contents are as expected
 open my $fd, "<$scriptdir/test.rrd.dump"; my @file=<$fd>;  my $file=join("",@file); close $fd;
-#open $fd, ">2"; print $fd $rrd->dump();close $fd;
-my $dump=$rrd->dump(); $dump=~ s/UTC/GMT/g;
+#open $fd, ">2"; print $fd $rrd->dump("-t");close $fd;
+my $dump=$rrd->dump("-t"); #$dump=~ s/UTC/GMT/g;
 ok($dump eq $file, 'dump()');
 
 # now do our best to check whether we can save the file in a portable-double format

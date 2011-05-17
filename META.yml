@@ -1,7 +1,7 @@
 # http://module-build.sourceforge.net/META-spec.html
 #XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
 name:         RRD-Editor
-version:      0.01_4
+version:      0.01_5
 version_from: lib/RRD/Editor.pm
 installdirs:  site
 requires:

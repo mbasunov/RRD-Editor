@@ -19,10 +19,10 @@ ok($rrd->set_DS_min("el2",0),"set_DS_min()");
 ok($rrd->set_DS_max("el2",1),"set_DS_max()");
 ok($rrd->add_DS("DS:added:GAUGE:600:U:U"),"add_DS()");
 ok($rrd->delete_DS("el3"),"delete_DS()");
-#open $fd, ">t/test.rrd.ds_editing.dump"; print $fd $rrd->dump(); close $fd;
+#open $fd, ">t/test.rrd.ds_editing.dump"; print $fd $rrd->dump("-t"); close $fd;
 # is result what we expect ?
 open $fd, "<$scriptdir/test.rrd.ds_editing.dump"; @file=<$fd>; ;close $fd;
-my $dump=$rrd->dump(); $dump=~ s/UTC/GMT/g;
+my $dump=$rrd->dump("-t"); #$dump=~ s/UTC/GMT/g;
 ok ($dump eq join("",@file), "DS editing");
 $rrd->close();
 
@@ -33,10 +33,10 @@ ok($rrd->set_RRA_el(1,"el1",2,100),"set_RRA_el()");
 ok($rrd->resize_RRA(1,20), "resize_RRA()");
 ok($rrd->add_RRA("RRA:AVERAGE:0.5:3:10"),"add_RRA()");
 ok($rrd->delete_RRA(0),"delete_RRA()");
-#open $fd, ">t/test.rrd.rra_editing.dump"; print $fd $rrd->dump(); close $fd;
+#open $fd, ">t/test.rrd.rra_editing.dump"; print $fd $rrd->dump("-t"); close $fd;
 # is result what we expect ?
 open $fd, "<$scriptdir/test.rrd.rra_editing.dump"; @file=<$fd>; ;close $fd;
-$dump=$rrd->dump(); $dump=~ s/UTC/GMT/g;
+$dump=$rrd->dump("-t"); #$dump=~ s/UTC/GMT/g;
 ok ($dump eq join("",@file), "RRA editing");
 $rrd->close();
 
