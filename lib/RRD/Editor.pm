@@ -1,6 +1,6 @@
 ############################################################
 #
-#   RRD::Editor Standalone perl implementation of non-graph functions of RRDTOOL (plus portability and editing extras).
+#   RRD::Editor - Portable, pure perl tool to create and edit RRD files.
 #
 ############################################################
 
@@ -18,7 +18,7 @@ use Config;
 
 use vars qw($VERSION @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = '0.01_5';
+$VERSION = '0.01_6';
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
@@ -76,17 +76,17 @@ use constant  NATIVE_BINARY_FLOATCOOKIE         =>   _cookie();
 use constant  PORTABLE_BINARY_FLOATCOOKIE       =>   chr(47). chr(37). chr(192). chr(199). chr(67). chr(43). chr(31). chr(91); # portable format is always little-endian 
 use constant  SINGLE_FLOATCOOKIE                =>   8.6421343830016e+13;  # cookie to use when storing floats in single precision as +130 exponent on old cookie is too large
 
-sub _default_fileformat {
-   # define the default file format
-    if ($Config{myarchname} =~ m/^(mips|ppc)/i && NATIVE_LONG_EL_SIZE==4) { # TODO: does this check work ok on non-Linux/Darwin systems ?
+sub _native_double {
+   # figure out the long/double alignment needed for the RRDTOOL file format
+    if ($Config{myarchname} =~ m/^(mips|ppc)/i && NATIVE_LONG_EL_SIZE==4) { # TODO: check works on non-Linux/Darwin systems, but also on others ?
                                                                             # Only affects behaviour when writing new files from scratch, 
-                                                                            # otherwise can figure out the right format to use when read 
+                                                                            # otherwise can figure out the right alignment to use when reading 
                                                                             # an existing file
         # For 32 bit MIPS and PowerPC machines, align long ints on 32 bit boundaries and doubles on 64 bit boundaries
-        return "native-double-mips";
+        return "native-double-mixed";
     } else {
         # Otherwise, align longs/doubles on 32 bit machines on 32 bit boundaries, and 64 bit machines on 64 bit boundaries.
-        return "native-double";
+        return "native-double-simple";
     }
 }
 
@@ -132,7 +132,7 @@ sub _packd {
     my $encoding=$_[0]->{encoding};
     if (defined($_[2])) {$encoding=$_[2];}
 
-    if ($encoding eq "native-double" || $encoding eq "native-double-mips") {
+    if ($encoding eq "native-double-simple" || $encoding eq "native-double-mixed") {
         # backwards-compatible (with RRDTOOL) RRD format
         return pack("d*", @{$_[1]});
     } elsif ($encoding eq "native-single") {
@@ -217,7 +217,7 @@ sub _unpackd {
     my $encoding=$_[0]->{encoding};
     if (defined($_[2])) {$encoding=$_[2];}
   
-    if ($encoding eq "native-double" || $encoding eq "native-double-mips") {
+    if ($encoding eq "native-double-simple" || $encoding eq "native-double-mixed") {
         # backwards-compatible (with RRDTOOL) RRD format
         return unpack("d*", $_[1]);
     } elsif ($encoding eq "native-single" ) {
@@ -279,7 +279,7 @@ sub _unpackd {
 sub _packlongchar {
     # pack encoding specification for integers.  no need for manual packing/unpacking of integers as agreed portable formats already available
     my $self=$_[0];
-    if ($self->{encoding} eq "native-double" || $self->{encoding} eq "native-double-mips") {
+    if ($self->{encoding} eq "native-double-simple" || $self->{encoding} eq "native-double-mixed") {
         # backwards-compatible (with RRDTOOL) RRD format
         return "L!"; # native long int
     } else {
@@ -297,25 +297,23 @@ sub _sizes {
     $self->{RRA_DEL_PAD}    = 0;  # for byte alignment in RRA_DEF after char(20) string
     $self->{STAT_PAD} = 0; # for byte alignment at end of static header.  
     $self->{RRA_PAD} = 0; # for byte alignment at end of RRAD_DEF float array
-    if ($self->{encoding} eq "native-double" ) {
+    if ($self->{encoding} eq "native-double-simple" || $self->{encoding} eq "native-double-mixed") {
         $self->{LONG_EL_SIZE} = NATIVE_LONG_EL_SIZE; 
         $self->{FLOAT_EL_SIZE}= NATIVE_DOUBLE_EL_SIZE; 
         $self->{COOKIE} = NATIVE_BINARY_FLOATCOOKIE;
         if ( NATIVE_LONG_EL_SIZE == 8) {
-            # We assume byte alignment is carried out wrt long ints i.e 32 bits on 32 bit machines and 64 bits on 64 bit machines.  
-            $self->{OFFSET}         = 16; # for byte alignment of the float cookie
-            $self->{RRA_DEL_PAD}    = 4;  # for byte alignment in RRA_DEF after char(20) string
-        } 
-    } elsif ($self->{encoding} eq "native-double-mips") {
-        # native-double-mips is to deal with MIPS which align long ints at 32 bits boundaries and
-        # doubles at 64 bit boundaries.  
-        $self->{LONG_EL_SIZE} = NATIVE_LONG_EL_SIZE; 
-        $self->{FLOAT_EL_SIZE}= NATIVE_DOUBLE_EL_SIZE; 
-        $self->{COOKIE} = NATIVE_BINARY_FLOATCOOKIE;
-        $self->{OFFSET}         = 16; # for byte alignment of the float cookie
-        $self->{RRA_DEL_PAD}    = 0;  # for byte alignment in RRA_DEF after char(20) string
-        $self->{STAT_PAD}       = 4;
-        $self->{RRA_PAD}        = 4;
+            # long ints and doubles are both 64 bits, alignment is at 64 bit boundaries for both native-double-simple and native-double-mixed
+            $self->{OFFSET}         = 16; # 64 bit alignment of the float cookie
+            $self->{RRA_DEL_PAD}    = 4;  # 64 bit alignment for first long in RRA_DEF after char(20) string
+        } elsif ( NATIVE_LONG_EL_SIZE == 4 && $self->{encoding} eq "native-double-mixed") {
+            # 32 bit native-double-mixed: align long ints at 32 bit boundaries and doubles at 64 bit boundaries.  
+            $self->{OFFSET}         = 16; # 64 bit alignment of the float cookie
+            $self->{RRA_DEL_PAD}    = 0;  # 32 bit alignment first long in RRA_DEF after char(20) string
+            $self->{STAT_PAD}       = 4;  # 64 bit alignment for start of DS defs 
+            $self->{RRA_PAD}        = 4;  # 64 bit alignment for first double in RRA_DEF
+        } else {
+            # default is 32 bit native-double-simple: align both long ints and doubles at 32 bit boundaries.  
+        }
     } elsif ($self->{encoding} eq "littleendian-single" || $self->{encoding} eq "native-single" || $self->{encoding} eq "portable-single" || $self->{encoding} eq "ieee-32") {
         $self->{LONG_EL_SIZE} = PORTABLE_LONG_EL_SIZE;
         $self->{FLOAT_EL_SIZE}= PORTABLE_SINGLE_EL_SIZE; # 32 bits
@@ -406,7 +404,7 @@ sub _extractCDPprep {
         #@{$rrd->{cdp_prep}[$ii]}=[];
         for ($i=0; $i<$rrd->{ds_cnt}; $i++) {
             # do a bit of code optimisation to aggregate function calls and array allocation here, since run inside inner loop.
-            if ($self->{encoding} eq "native-double") {
+            if ($self->{encoding} eq "native-double-simple" || $self->{encoding} eq "native-double-mixed") {
                 @{$self->{rrd}->{rra}[$ii]->{cdp_prep}[$i]} = unpack("d $L x".$self->{DIFF_SIZE}." d d d d $L x".$self->{DIFF_SIZE}." $L x".$self->{DIFF_SIZE}." d d",substr(${$header},$idx,$self->{CDP_PREP_EL_SIZE}));
                 $idx+=$self->{CDP_PREP_EL_SIZE};
             } elsif ($self->{encoding} eq "native-single") {
@@ -1240,14 +1238,14 @@ sub info {
     $out.=sprintf "%s", "rrd_version = ".$rrd->{version}."\n";
     if (@_==1) {
        $out.=sprintf "%s", "encoding = ";
-       if ($self->{encoding} eq "native-double" || $self->{encoding} eq "native-double-mips") {
+       if ($self->{encoding} eq "native-double-simple" || $self->{encoding} eq "native-double-mixed") {
 	      $out.="native-double";
        } elsif ($self->{encoding} =~ /double/) {
-	      $out.="portable-double (".$self->{encoding}.")";
+	      $out.="portable-double";
        } else {
-          $out.="portable-single (".$self->{encoding}.")";
+          $out.="portable-single";
        }
-       $out.="\n";
+       $out.=" (".$self->{encoding}.")\n";
     }
     $out.=sprintf "%s", "step = ".$rrd->{pdp_step}."\n";
     $out.=sprintf "%s", "last_update = ".int($rrd->{last_up})."\n";
@@ -1398,7 +1396,7 @@ sub _saveheader {
     for (my $ii=0; $ii<$self->{rrd}->{rra_cnt}; $ii++) {
         for ($i=0; $i<$self->{rrd}->{ds_cnt}; $i++) {
             # do a bit of code optimisation here
-            if ($self->{encoding} eq "native-double") {
+            if ($self->{encoding} eq "native-double-simple" || $self->{encoding} eq "native-double-mixed") {
                 substr($header,$idx,$self->{CDP_PREP_EL_SIZE}, pack("d $L x".$self->{DIFF_SIZE}." d d d d $L x".$self->{DIFF_SIZE}." $L x".$self->{DIFF_SIZE}." d d",@{$self->{rrd}->{rra}[$ii]->{cdp_prep}[$i]}));
                 $idx+=$self->{CDP_PREP_EL_SIZE};
             } elsif ($self->{encoding} eq "native-single") {
@@ -1445,8 +1443,13 @@ sub save {
     my $fd=$self->{fd};
 
     if (!defined($self->{encoding})) { croak("Current encoding must be defined\n.");}
-    my $current_encoding=$self->{encoding};
-    if (@_>2) {$self->{encoding}=$_[2];}
+    my $current_encoding=$self->{encoding}; 
+    if (@_>2) {
+        my $encoding=$_[2];
+        if ($encoding !~ m/^(native-double|native-double-simple|native-double-mixed|portable-double|portable-single)$/) {croak("unknown format ".$encoding."\n");} 
+        if ($encoding =~ m/^native-double$/) {$encoding=_native_double();}
+        $self->{encoding}=$encoding;
+    }
     _sizes($self);
 
     # output headers
@@ -1484,7 +1487,7 @@ sub create {
     my ($self, $args_str) = @_;  my $rrd=$self->{rrd};
 
     my $last_up=time(); my $pdp_step=300; 
-    my $encoding=_default_fileformat(); # default to RRDTOOL compatible encoding.
+    my $encoding="native-double"; # default to RRDTOOL compatible encoding.
     my $ret; my $args;
     ($ret, $args) = GetOptionsFromString($args_str,
     "start|b:i" => \$last_up,
@@ -1493,7 +1496,8 @@ sub create {
     );
     if ($last_up < 3600 * 24 * 365 * 10) { croak("the first entry to the RRD should be after 1980\n"); }
     if ($pdp_step <1) {croak("step size should be no less than one second\n");}
-    if ($encoding !~ m/(native-double|portable-double|portable-single)/) {croak("unknown format ".$encoding."\n");} 
+    if ($encoding !~ m/^(native-double|native-double-simple|native-double-mixed|portable-double|portable-single)$/) {croak("unknown format ".$encoding."\n");} 
+    if ($encoding =~ m/^native-double$/) {$encoding=_native_double();}
     $self->{encoding}=$encoding;
     _sizes($self);
         
@@ -1566,11 +1570,12 @@ sub open {
     # use float cookie to try to figure out the encoding used, taking account of variable byte alignment (e.g. float cookie starts at byte 12 on 32 bits Intel/Linux machines and at byte 16 on 64 bit Intel/Linux machines)
     #my ($x, $y, $byte1, $byte2, $byte3, $byte4, $byte5, $byte6, $byte7, $byte8) =unpack("Z4 Z5 x![L!] C C C C C C C C",substr($staticheader,0,length($staticheader)));
     #print $byte1, " ", $byte2, " ",$byte3," ", $byte4," ", $byte5," ", $byte6," ", $byte7," ", $byte8,"\n";
-    $self->{encoding}=undef;
-    (my $x, my $y, my $file_floatcookie_native_double) =unpack("Z4 Z5 x![L!] d",substr($staticheader,0,length($staticheader)));
-    ($x, $y, my $file_floatcookie_native_double_mips) =unpack("Z4 Z5 x![d] d",substr($staticheader,0,length($staticheader)));
-    $file_floatcookie_native_double = sprintf("%0.6e", $file_floatcookie_native_double);
-    my ($t)=_unpackd($self,substr($staticheader,12,PORTABLE_SINGLE_EL_SIZE),"native-single");
+    $self->{encoding}=undef; 
+    (my $x, my $y, my $t) =unpack("Z4 Z5 x![L!] d",substr($staticheader,0,length($staticheader)));
+    my $file_floatcookie_native_double_simple = sprintf("%0.6e", $t);
+    ($x, $y, $t) =unpack("Z4 Z5 x![d] d",substr($staticheader,0,length($staticheader)));
+    my $file_floatcookie_native_double_mixed = sprintf("%0.6e", $t);
+    ($t)=_unpackd($self,substr($staticheader,12,PORTABLE_SINGLE_EL_SIZE),"native-single");
     my $file_floatcookie_native_single=sprintf("%0.6e",$t); 
     ($t)=_unpackd($self,substr($staticheader,12,PORTABLE_SINGLE_EL_SIZE),"portable-single");
     my $file_floatcookie_portable_single=sprintf("%0.6e",$t); 
@@ -1586,10 +1591,10 @@ sub open {
     }
     my $cookie=sprintf("%0.6e",DOUBLE_FLOATCOOKIE);
     my $singlecookie=sprintf("%0.6e",SINGLE_FLOATCOOKIE);
-    if ($file_floatcookie_native_double eq $cookie) {
-        $self->{encoding} = "native-double";  
-    } elsif ($file_floatcookie_native_double_mips eq  $cookie ) {
-        $self->{encoding} = "native-double-mips"; 
+    if ($file_floatcookie_native_double_simple eq $cookie) {
+        $self->{encoding} = "native-double-simple";  
+    } elsif ($file_floatcookie_native_double_mixed eq  $cookie ) {
+        $self->{encoding} = "native-double-mixed"; 
     } elsif ($file_floatcookie_native_single eq  $singlecookie ) {
         $self->{encoding} = "native-single"; 
     } elsif ($PACK_LITTLE_ENDIAN_SUPPORT>0 && $file_floatcookie_littleendian_double eq $cookie) {
@@ -2113,22 +2118,21 @@ The RRD::Editor code is portable, and so long as you stick to using the portable
 
 Intel 686 32bit, AMD64/Intel x86 64bit, ARMv5 32bit (little-endian), MIPS 32bit (Malta), PowerPC 32bit
  
-If your platform is not listed, there is a good chance things will "just work" but double checking that RRDTOOL can read the C<native-double> format RRD files generated by RRD::Editor, and vice-versa, would be a good idea if that's important to you.
+For more information on RRD::Editor portability testing, see L<http://www.glmonitoring.ie/rrdeditor/>.  If your platform is not listed, there is a good chance things will "just work" but double checking that RRDTOOL can read the C<native-double> format RRD files generated by RRD::Editor, and vice-versa, would be a good idea if that's important to you.
  
 =head1 SEE ALSO
 
-L<RRD::Simple>, L<RRDTool::OO>, L<RRDs>,
-L<http://www.rrdtool.org>, examples/*.pl,
+RRD::Editor command line interface L<rrdtool.pl|http://cpansearch.perl.org/src/DOUGLEITH/rrdtool.pl>, L<RRD::Simple>, L<RRDTool::OO>, L<http://www.rrdtool.org>
  
 =head1 VERSION
  
-Ver 0.01_5
+Ver 0.01_6
  
 =head1 AUTHOR
  
 Doug Leith 
  
-L<http://www.leith.ie>
+L<http://www.glmonitoring.ie>
    
 =head1 BUGS
  

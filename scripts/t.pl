@@ -1,5 +1,33 @@
 #!/usr/bin/perl
 
+######################################################
+#
+# Utility for checking binary compatibility of native RRDTOOL file format with RRD::Editor.
+# To run, just type t.pl.  The script then does the following:
+#
+# 1. Uses RRDTOOL to create a known RRD file test.rrd
+#
+# 2. Uses RRD:Editor ditto test2.rrd
+#
+# 3. Checks that RRD::Editor can read the file created by RRDTOOL, and dumps the xml to test.editor.xml
+#    for comparison with the RRDTOOL output in test.rrdtool.xml
+#
+# 4. Checks that RRDTOOL can read the file created by RRD::Editor and dumps the xml to test2.rrdtool.xml
+#    for comparison with the RRD::Editor output intest2.editor.xml
+#
+# A manual comparison of the xml files produced is a good idea e.g. using 
+#
+# diff -uwbi test.rrdtool.xml test.editor.xml
+# diff -uwbi test2.rrdtool.xml test2.editor.xml
+#
+# This is left to a human though as small discrepancies may be ok e.g differences in the XML format
+# white-space (which changes over different versions of RRDTOOL), NaN vs -NaN, 0 vs -0 values (which 
+# can be safely ignored) etc.
+#
+# D.J.Leith 2011
+#
+######################################################
+
 use strict;
 
 print "Generating test.rrd using RRDTOOL ...";
