@@ -23,7 +23,7 @@ ok($rrd->delete_DS("el3"),"delete_DS()");
 # is result what we expect ?
 open $fd, "<$scriptdir/test.rrd.ds_editing.dump"; @file=<$fd>; ;close $fd;
 my $dump=$rrd->dump("-t"); #$dump=~ s/UTC/GMT/g;
-ok ($dump eq join("",@file), "DS editing");
+ok (lc($dump) eq lc(join("",@file)), "DS editing");
 $rrd->close();
 
 # do some RRA editing
@@ -37,6 +37,6 @@ ok($rrd->delete_RRA(0),"delete_RRA()");
 # is result what we expect ?
 open $fd, "<$scriptdir/test.rrd.rra_editing.dump"; @file=<$fd>; ;close $fd;
 $dump=$rrd->dump("-t"); #$dump=~ s/UTC/GMT/g;
-ok ($dump eq join("",@file), "RRA editing");
+ok (lc($dump) eq lc(join("",@file)), "RRA editing");
 $rrd->close();
 

@@ -18,7 +18,7 @@ use Config;
 
 use vars qw($VERSION @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = '0.02';
+$VERSION = '0.03';
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
@@ -1694,13 +1694,13 @@ RRD::Editor - Portable, standalone (no need for RRDs.pm) tool to create and edit
  $rrd->update("N:10039:389:0.4");
   
  # Show information about an RRD.  Output generated is similar to 
- # "rrdtool info".
+ # 'rrdtool info'.
  print $rrd->info();
  
- # XML dump of RRD contents.  Output generated is similar to "rrdtool dump".
+ # XML dump of RRD contents.  Output generated is similar to 'rrdtool dump'.
  print $rrd->dump();
  
- # Extract data measurements stored in RRAs of type "AVERAGE"
+ # Extract data measurements stored in RRAs of type AVERAGE
  # The argument format is the same as that used by 'rrdtool fetch' and 
  # the output generated is also similar, see
  # L<http://oss.oetiker.ch/rrdtool/doc/rrdfetch.en.html>
@@ -1716,7 +1716,7 @@ RRD::Editor - Portable, standalone (no need for RRDs.pm) tool to create and edit
  otherwise when creating an RRD.
  print $rrd->minstep()
  
-=head2 Edit DSs
+=head2 Edit Data Sources
  
  # Add a new data-source called bytes.  Argument format is the same as $rrd->create().
  $rrd->add_DS("DS:bytes:GAUGE:600:U:U");
@@ -1737,7 +1737,7 @@ RRD::Editor - Portable, standalone (no need for RRDs.pm) tool to create and edit
  # Set the heartbeat value for data-source bytesOut to be 1200 secs
  $rrd->set_DS_heartbeat("bytesOut",1200);
  
- # Get the type of data-source bytesOut
+ # Get the type (COUNTER, GAUGE etc) of data-source bytesOut
  printf "Type of DS bytesOut = %s\n", $rrd->DS_type("bytesOut");
  
  # Set the type of data-source bytesOut to be COUNTER
@@ -1757,24 +1757,23 @@ RRD::Editor - Portable, standalone (no need for RRDs.pm) tool to create and edit
  
 =head2 Edit RRAs 
  
- # Add a new RRA which stores 1 weeks worth of data at 30 minute intervals 
- # (336 data points)
+ # Add a new RRA which stores 1 weeks worth of data (336 data points) at 30 minute  
+ # intervals (30 mins = 6 x 5 mins)
  $rrd->add_RRA("RRA:AVERAGE:0.5:6:336");
 
  # RRAs are identified by an index in range 0 .. $rrd->num_RRAs().  The index 
- # of an RRD can also be 
- # found using $rrd->info() or $rrd->dump()
+ # of an RRD can also be found using $rrd->info() or $rrd->dump()
+ my $rra_idx=1; 
  
  # Delete an existing RRA with index $rra_idx.  
- my $rra_idx=1; 
  $rrd->delete_RRA($rra_idx);
  
- # Get the number of rows/data points stored in an RRD
- my $rra_idx=0; 
+ # Get the number of rows/data points stored in the RRA with index $rra_idx
+ $rra_idx=0; 
  printf "number of rows of RRA %d = %d\n", $rra_idx, $rrd->RRA_numrows($rra_idx);
  
  # Change the number of rows/data points stored in the RRA with index 
- # $rra_idx to 600.
+ # $rra_idx to be 600.
  $rra->resize_RRA($rra_idx, 600);
  
   # Get the value of bytesIn stored at the 10th row/data-point in the 
@@ -1849,9 +1848,9 @@ Load the RRD in the file called C<$file_name>.  Only the file header is loaded i
  
 Save RRD to a file called $file_name with format specified by C<$encoding>.  Possible values for C<$encoding> are C<"native-double">, C<"portable-double">, C<"portable-single">.  
  
-If omitted, C<$encoding> defaults to the format of the file specified when calling C<open()>, or to C<native-double> if the RRD has just been created using C<create()>.  C<native-double> is the non-portable binary format used by RRDTOOL.  C<portable-double> is portable across platforms and stores data as double-precision values. C<portable-single> is portable across platforms and stores data as single-precision values (reducing the RRD file size by approximately half).  If interested in the gory details, C<portable-double> is just the native-double format used by Intel 32-bit platforms (i.e. little-endian byte ordering, 32 bit integers, 64 bit IEEE 754 doubles, storage aligned to 32 bit boundaries) - an arbitrary choice, but not unreasonable since Intel platforms are probably the most widespread at the moment, and compatible with web tools such as javascriptRRD L<http://javascriptrrd.sourceforge.net/>.
+If omitted, C<$encoding> defaults to the format of the file specified when calling C<open()>, or to C<"native-double"> if the RRD has just been created using C<create()>.  C<native-double> is the non-portable binary format used by RRDTOOL.  C<portable-double> is portable across platforms and stores data as double-precision values. C<portable-single> is portable across platforms and stores data as single-precision values (reducing the RRD file size by approximately half).  If interested in the gory details, C<portable-double> is just the C<native-double> format used by Intel 32-bit platforms (i.e. little-endian byte ordering, 32 bit integers, 64 bit IEEE 754 doubles, storage aligned to 32 bit boundaries) - an arbitrary choice, but not unreasonable since Intel platforms are probably the most widespread at the moment, and it is also compatible with web tools such as javascriptRRD L<http://javascriptrrd.sourceforge.net/>.
  
-If the RRD was opened using C<open()>, then C<$file_name> is optional and if omitted C<$rrd->save()> will save the RRD to the same file as it was read from.
+If the RRD was opened using C<open()>, then C<$file_name> is optional and if omitted C<save()> will save the RRD to the same file as it was read from.
 
 =head2 close
  
@@ -1876,7 +1875,7 @@ Returns a string containing the complete contents of the RRD (including data) in
  
  my $vals = $rrd->fetch($args);
  
-Returns a string containing a table of measurement data from the RRD.  C<$arg>s is a string that contains the same sort of command line arguments that would be passed to C<rrdtool fetch>.   The format for C<$args> is:
+Returns a string containing a table of measurement data from the RRD.  C<$args> is a string that contains the same sort of command line arguments that would be passed to C<rrdtool fetch>.   The format for C<$args> is:
  
  CF [--resolution|-r resolution] [--start|-s start] [--end|-e end] 
  
@@ -1892,7 +1891,7 @@ Feeds new data values into the RRD.   C<$args> is a string that contains the sam
  
 See L<http://oss.oetiker.ch/rrdtool/doc/rrdupdate.en.html> for further details.
  
-SinceC<update()> is often called repeatedly, for greater efficiency in-place updating of RRD files is used where possible.  To understand this, a little knowledge of the RRD file format is needed.  RRD files consist of a small header containing details of the DSs and RRA, and a large body containing the data values stored in the RRAs.  Reading the body into memory is relatively costly since it is much larger than the header, and so is only done by RRD::Editor on an "as-needed" basis.  So long as the body has not yet been read into memory when C<update()> is called, C<update()> will update the file on disk i.e. without reading in the body.  In this case there is no need to call C<save()>.   If the body has been loaded into memory when C<update()> is  called, then the copy of the data stored in memory will be updated and the file on disk left untouched - a call to C<save()> is then needed to freshen the file stored on disk.  Seems complicated, but its actually ok in practice.  If all you want to do is efficiently update a file, just use the following formula:
+Since C<update()> is often called repeatedly, in-place updating of RRD files is used where possible for greater efficiency .  To understand this, a little knowledge of the RRD file format is needed.  RRD files consist of a small header containing details of the DSs and RRAs, and a large body containing the data values stored in the RRAs.  Reading the body into memory is relatively costly since it is much larger than the header, and so is only done by RRD::Editor on an "as-needed" basis.  So long as the body has not yet been read into memory when C<update()> is called, C<update()> will update the file on disk i.e. without reading in the body.  In this case there is no need to call C<save()>.   If the body has been loaded into memory when C<update()> is  called, then the copy of the data stored in memory will be updated and the file on disk left untouched - a call to C<save()> is then needed to freshen the file stored on disk.  Seems complicated, but its actually ok in practice.  If all you want to do is efficiently update a file, just use the following formula:
  
  $rrd->open($file_name);
  $rrd->update($args);
@@ -1928,17 +1927,17 @@ Returns the minimum step size (in seconds) used to store data values in the RRD.
  
  $rrd->add_DS($arg);
 
-Add a new data-source to the RRD.  Only one data-source can be added at a time. Details of the data-source to be added are specified by the string $arg. The format of $arg is:
+Add a new data-source to the RRD.  Only one data-source can be added at a time. Details of the data-source to be added are specified by the string C<$arg>. The format of C<$arg> is:
  
  [DS:ds-name:DST:heartbeat:min:max] 
  
-where DST may be one of GAUGE, COUNTER, DERIVE, ABSOLUTE i.e. the same format as used for $rrd->create().
+where DST may be one of GAUGE, COUNTER, DERIVE, ABSOLUTE i.e. the same format as used for C<create()>.
 
 =head2 delete_DS
  
  $rrd->delete_DS($ds-name);
 
-Delete the data-source with name $ds-name from the RRD.   WARNING: This will irreversibly delete all of the data stored for the data-source.
+Delete the data-source with name C<$ds-name> from the RRD.   WARNING: This will irreversibly delete all of the data stored for the data-source.
  
 =head2 DS_names
  
@@ -1956,7 +1955,7 @@ Change the name of data-source C<$ds-name> to be C<$ds-newname>
  
  my $hb= $rrd->DS_heartbeat($ds-name);
  
-Returns the current heartbeat (in secodns) of a data-source.  The heartbeat is the max number of seconds that may elapse between data measurements before declaring that data is missing.
+Returns the current heartbeat (in seconds) of a data-source.  The heartbeat is the max number of seconds that may elapse between data measurements before declaring that data is missing.
 
 =head2 set_DS_heartbeat
  
@@ -1980,41 +1979,41 @@ Sets the type of data-source C<$ds-name> to be C<$type>.
 
  my $min = $rrd->DS_min($ds-name);
  
-Returns the minimum allowed for measurements from data-source C<$ds-name>.  Measurements below this value are set equal to $min when stored in the RRD.
+Returns the minimum allowed for measurements from data-source C<$ds-name>.  Measurements below this value are set equal to C<$mi>n when stored in the RRD.
  
 =head2 set_DS_min
  
  $rrd->set_DS_min($ds-name, $min);
  
-Set the minimum value for data-source $ds-name to be $min.
+Set the minimum value for data-source C<$ds-name> to be C<$min>.
  
 =head2 DS_max
  
  my $max = $rrd->DS_max($ds-name);
  
-Returns the maximum allowed for measurements from data-source $ds-name.  Measurements above this value are set equal to $max when stored in the RRD.
+Returns the maximum allowed for measurements from data-source C<$ds-name>.  Measurements above this value are set equal to C<$max> when stored in the RRD.
  
 =head2 set_DS_max
  
  $rrd->set_DS_max($ds-name, $max);
  
-Set the maximum value for data-source $ds-name to be $max.
+Set the maximum value for data-source C<$ds-name> to be C<$max>.
  
 =head2 add_RRA 
  
  $rrd->add_RRA($arg);
 
-Add a new RRA to the RRD.   Only one RRA can be added at a time. Details of the RRA to be added are specified by the string $arg. The format of $arg is:
+Add a new RRA to the RRD.   Only one RRA can be added at a time. Details of the RRA to be added are specified by the string C<$arg>. The format of C<$arg> is:
  
  [RRA:CF:xff:steps:rows]
  
-where CF may be one of AVERAGE, MIN, MAX, LAST i.e. the same format as used for $rrd->create().
+where CF may be one of AVERAGE, MIN, MAX, LAST i.e. the same format as used for C<create()>.
 
 =head2 num_RRAs
  
  my $num_RRAs = $rrd->num_RRAs();
  
-Returns the number of RRAs stored in the RRD.   Unfortunaely, unlike data-sources, RRAs are not named and so are only identified by an index in the range 0 .. C<num_RRAs()>.  The index of an RRD can be found using C<info()> or C<dump()>.
+Returns the number of RRAs stored in the RRD.   Unfortunately, unlike data-sources, RRAs are not named and so are only identified by an index in the range 0 .. C<num_RRAs()-1>.  The index of a specific RRD can be found using C<info()> or C<dump()>.
  
 =head2 delete_RRA
  
@@ -2038,13 +2037,13 @@ Change the number of rows to be C<$numrows> in the RRA with index C<$rra_idx>.  
 
  my ($t,$val) = $rra->RRA_el($rra_idx, $ds-name, $row);
  
-Returns the timestamp and the value of data-source $ds-name stored at row C<$row> in the RRA with index C<$rra_idx>.  C<$row> must be in the range [0..C<RRA_numrows($rra_idx)>-1].  Row 0 corresponds to the oldest data point stored and row C<RRA_numrows($rra_idx)>-1 to the most recent data point.
+Returns the timestamp and the value of data-source C<$ds-name> stored at row C<$row> in the RRA with index C<$rra_idx>.  C<$row> must be in the range [0 .. C<RRA_numrows($rra_idx)-1>].  Row 0 corresponds to the oldest data point stored and row C<RRA_numrows($rra_idx)-1> to the most recent data point.
 
 =head2 set_RRA_el
 
  $rra->set_RRA_el($rra_idx, $ds-name, $row, $val);  
  
-Set the stored value equal to C<$val> for data-source $ds-name stored at row C<$row> in the RRA with index C<$rra_idx>.
+Set the stored value equal to C<$val> for data-source C<$ds-nam>e stored at row C<$row> in the RRA with index C<$rra_idx>.
 
 =head2 RRA_xff
 
@@ -2114,7 +2113,7 @@ The tag C<all> is available to easily export everything:
  
 =head1 Portability/Compatibility with RRDTOOL
  
-The RRD::Editor code is portable, and so long as you stick to using the portable-double and portable-single file formats the RRD files generated will also be portable.  Portability issues arise when the C<native-double> file format of RRD::Editor is used to store RRDs.  This format tries to be compatible with the non-portable binary format used by RRDTOOL, which requires RRD::Editor to figure out nasty low-level details of the platform it is running on (byte ordering, byte alignment, representation used for doubles etc).   To date, RRD::Editor and RRDTOOL have been confirmed compatible (i.e. they can read each others RRD files) on the following platforms:
+The RRD::Editor code is portable, and so long as you stick to using the C<portable-double> and C<portable-single> file formats the RRD files generated will also be portable.  Portability issues arise when the C<native-double> file format of RRD::Editor is used to store RRDs.  This format tries to be compatible with the non-portable binary format used by RRDTOOL, which requires RRD::Editor to figure out nasty low-level details of the platform it is running on (byte ordering, byte alignment, representation used for doubles etc).   To date, RRD::Editor and RRDTOOL have been confirmed compatible (i.e. they can read each others RRD files in C<native-double> format) on the following platforms:
 
 Intel 686 32bit, AMD64/Intel x86 64bit, ARMv5 32bit (little-endian), MIPS 32bit (Malta), PowerPC 32bit
  
@@ -2122,11 +2121,11 @@ For more information on RRD::Editor portability testing, see L<http://www.glmoni
  
 =head1 SEE ALSO
 
-RRD::Editor command line interface L<rrdtool.pl|http://cpansearch.perl.org/src/DOUGLEITH/rrdtool.pl>, L<RRD::Simple>, L<RRDTool::OO>, L<http://www.rrdtool.org>
+L<rrdtool.pl|http://cpansearch.perl.org/src/DOUGLEITH/RRD-Editor-0.02/scripts/rrdtool.pl> command line interface for RRD::Editor, L<RRD::Simple>, L<RRDTool::OO>, L<http://www.rrdtool.org>
  
 =head1 VERSION
  
-Ver 0.02
+Ver 0.03
  
 =head1 AUTHOR
  
