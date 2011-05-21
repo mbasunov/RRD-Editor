@@ -18,7 +18,7 @@ use Config;
 
 use vars qw($VERSION @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = '0.03';
+$VERSION = '0.04';
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
@@ -58,8 +58,8 @@ return pack("d",_cookie_C());
     # and either little-endian or big-endian byte order (i.e. most modern machines):
     if (substr($Config{byteorder},0,4) eq "1234") {
         if ($Config{myarchname} =~ m/^arm/i && NATIVE_LONG_EL_SIZE==4) {
-            # For 32 bit ARM processors.  ARM changes the byte order of doubles
-            # depending on alignment with 32 bit boundaries - this only affects the float cookie byte ordering, other .
+            # For 32 bit ARMv5 processors.  ARM changes the byte order of doubles
+            # depending on alignment with 32 bit boundaries - this only affects the float cookie byte ordering.
             return chr(67). chr(43). chr(31). chr(91). chr(47). chr(37). chr(192). chr(199); 
         } else {    
             return chr(47). chr(37). chr(192). chr(199). chr(67). chr(43). chr(31). chr(91); # regular little endian
@@ -78,7 +78,7 @@ use constant  SINGLE_FLOATCOOKIE                =>   8.6421343830016e+13;  # coo
 
 sub _native_double {
    # figure out the long/double alignment needed for the RRDTOOL file format
-    if ($Config{myarchname} =~ m/^(mips|ppc)/i && NATIVE_LONG_EL_SIZE==4) { # TODO: check works on non-Linux/Darwin systems, but also on others ?
+    if ($Config{myarchname} =~ m/^(mips|ppc)/i && NATIVE_LONG_EL_SIZE==4) { # TODO: this check works on non-Linux/Darwin systems, but also on others ?
                                                                             # Only affects behaviour when writing new files from scratch, 
                                                                             # otherwise can figure out the right alignment to use when reading 
                                                                             # an existing file
@@ -1157,12 +1157,13 @@ sub fetch {
     my ($self, $args_str) = @_;  my $rrd=$self->{rrd};
     my $out='';
     
-    my $step=$rrd->{pdp_step}; my $start=time()-24*60*60; my $end=time(); 
+    my $step=$rrd->{pdp_step}; my $start=time()-24*60*60; my $end=time(); my $digits=10; # number of digits printed for floats
     my $ret; my $args;
     ($ret, $args) = GetOptionsFromString($args_str,
     "resolution|r:i" => \$step,
     "start|s:i" => \$start,
-    "end|e:i"  => \$end
+    "end|e:i"  => \$end,
+    "digits|d:i" => \$digits
     );
     # at the moment, start/end times are unix timestamps.
     if ($start < 3600 * 24 * 365 * 10) {croak("the first entry to fetch should be after 1980");}
@@ -1221,7 +1222,7 @@ sub fetch {
             $jj= ($rrd->{rra}[$chosen_rra]->{ptr}+1 + $j)%$rrd->{rra}[$chosen_rra]->{row_cnt};
             @line=_unpackd($self,$rrd->{rra}[$chosen_rra]->{data}[$jj]);
             for ($i=0; $i<$rrd->{ds_cnt}; $i++) {
-                    $out.=sprintf "%-16.10e ", $line[$i];
+                    $out.=sprintf "%-16.".$digits."e ", $line[$i];
             }
             $out.=sprintf "%s", "\n";
         }
@@ -1234,6 +1235,15 @@ sub info {
     # dump out header info
     my $self=$_[0]; my $rrd = $self->{rrd};
     my $out='';
+    
+    use Getopt::Long qw(GetOptionsFromString :config pass_through);
+    my $digits=10;
+    if (defined($_[1])) {
+        my $ret; my $args;
+        ($ret, $args) = GetOptionsFromString($_[1],
+        "digits|d:i" => \$digits
+        );
+    }
     
     $out.=sprintf "%s", "rrd_version = ".$rrd->{version}."\n";
     if (@_==1) {
@@ -1258,7 +1268,7 @@ sub info {
         $out.=sprintf "%s", "$str.min = ".$rrd->{ds}[$i]->{min}."\n";
         $out.=sprintf "%s", "$str.max = ".$rrd->{ds}[$i]->{max}."\n";
         $out.=sprintf "%s", "$str.last_ds = \"".$rrd->{ds}[$i]->{pdp_prep}->{last_ds}."\"\n";
-        $out.=sprintf "$str.value = %0.10e\n",$rrd->{ds}[$i]->{pdp_prep}->{val};
+        $out.=sprintf "$str.value = %0.".$digits."e\n",$rrd->{ds}[$i]->{pdp_prep}->{val};
         $out.=sprintf "%s", "$str.unknown_sec = ".$rrd->{ds}[$i]->{pdp_prep}->{unkn_sec_cnt}."\n";
     }
     for ($i=0; $i<$rrd->{rra_cnt}; $i++) {
@@ -1267,9 +1277,9 @@ sub info {
         $out.=sprintf "%s", "$str.rows = ".$rrd->{rra}[$i]->{row_cnt}."\n";
         $out.=sprintf "%s", "$str.cur_row = ".$rrd->{rra}[$i]->{ptr}."\n";
         $out.=sprintf "%s", "$str.pdp_per_row = ".$rrd->{rra}[$i]->{pdp_cnt}."\n";
-        $out.=sprintf "$str.xff = %0.10e\n",$rrd->{rra}[$i]->{xff};
+        $out.=sprintf "$str.xff = %0.".$digits."e\n",$rrd->{rra}[$i]->{xff};
         for ($ii=0; $ii<$rrd->{ds_cnt}; $ii++) {
-            $out.=sprintf "$str.cdp_prep[$ii].value = %0.10e\n",$rrd->{rra}[$i]->{cdp_prep}[$ii]->[VAL];
+            $out.=sprintf "$str.cdp_prep[$ii].value = %0.".$digits."e\n",$rrd->{rra}[$i]->{cdp_prep}[$ii]->[VAL];
             $out.=sprintf "%s", "$str.cdp_prep[$ii].unknown_datapoints = ".$rrd->{rra}[$i]->{cdp_prep}[$ii]->[UNKN_PDP_CNT]."\n";
         }
     }
@@ -1281,12 +1291,13 @@ sub dump {
     use Getopt::Long qw(GetOptionsFromString :config pass_through);
     my ($self, $args_str) = @_;  my $rrd=$self->{rrd};
 
-    my $noheader=0; my $notimecomments=0;
+    my $noheader=0; my $notimecomments=0; my $digits=10;
     if (defined($args_str)) {
         my $ret; my $args;
         ($ret, $args) = GetOptionsFromString($args_str,
         "no-header|n" => \$noheader,
         "notimecomments|t"  => \$notimecomments,
+        "digits|d:i" => \$digits
         );
     }
     my $timecomments = $notimecomments>0 ? 0 : 1;
@@ -1311,7 +1322,7 @@ sub dump {
         $out.=sprintf "%s", "<minimal_heartbeat>".$rrd->{ds}[$i]->{hb}."</minimal_heartbeat>\n\t\t",;
         $out.=sprintf "%s", "<min>".$rrd->{ds}[$i]->{min}."</min>\n\t\t<max>".$rrd->{ds}[$i]->{max}."</max>\n\t\t";
         $out.=sprintf "%s", "\n\t\t<!-- PDP Status -->\n\t\t<last_ds>".$rrd->{ds}[$i]->{pdp_prep}->{last_ds}."</last_ds>\n\t\t";
-        $out.=sprintf "<value>%0.10e</value>\n\t\t", $rrd->{ds}[$i]->{pdp_prep}->{val}+0;
+        $out.=sprintf "<value>%0.".$digits."e</value>\n\t\t", $rrd->{ds}[$i]->{pdp_prep}->{val}+0;
         $out.=sprintf "%s", "<unknown_sec>".$rrd->{ds}[$i]->{pdp_prep}->{unkn_sec_cnt}."</unknown_sec>\n\t";
         $out.=sprintf "%s", "</ds>\n";
     }
@@ -1320,12 +1331,12 @@ sub dump {
         $out.=sprintf "%s", "\t<rra>\n\t\t";
         $out.=sprintf "%s", "<cf>".$rrd->{rra}[$i]->{name}."</cf>\n\t\t";
         $out.=sprintf "%s", "<pdp_per_row>".$rrd->{rra}[$i]->{pdp_cnt}."</pdp_per_row> <!-- ".$rrd->{rra}[$i]->{pdp_cnt}*$rrd->{pdp_step}." seconds -->\n\n\t\t";
-        $out.=sprintf "<params>\n\t\t<xff>%0.10e</xff>\n\t\t</params>\n\t\t",$rrd->{rra}[$i]->{xff};
+        $out.=sprintf "<params>\n\t\t<xff>%0.".$digits."e</xff>\n\t\t</params>\n\t\t",$rrd->{rra}[$i]->{xff};
         $out.=sprintf "%s", "<cdp_prep>\n\t\t";
         for ($ii=0; $ii<$rrd->{ds_cnt}; $ii++) {
-            $out.=sprintf "\t<ds>\n\t\t\t<primary_value>%0.10e</primary_value>\n\t\t\t", $rrd->{rra}[$i]->{cdp_prep}[$ii]->[PRIMARY_VAL];
-            $out.=sprintf "<secondary_value>%0.10e</secondary_value>\n\t\t\t", $rrd->{rra}[$i]->{cdp_prep}[$ii]->[SECONDARY_VAL];
-			$out.=sprintf "<value>%0.10e</value>\n\t\t\t", $rrd->{rra}[$i]->{cdp_prep}[$ii]->[VAL];
+            $out.=sprintf "\t<ds>\n\t\t\t<primary_value>%0.".$digits."e</primary_value>\n\t\t\t", $rrd->{rra}[$i]->{cdp_prep}[$ii]->[PRIMARY_VAL];
+            $out.=sprintf "<secondary_value>%0.".$digits."e</secondary_value>\n\t\t\t", $rrd->{rra}[$i]->{cdp_prep}[$ii]->[SECONDARY_VAL];
+			$out.=sprintf "<value>%0.".$digits."e</value>\n\t\t\t", $rrd->{rra}[$i]->{cdp_prep}[$ii]->[VAL];
 			$out.=sprintf "%s", "<unknown_datapoints>". $rrd->{rra}[$i]->{cdp_prep}[$ii]->[UNKN_PDP_CNT]."</unknown_datapoints>\n\t\t\t";            
             $out.=sprintf "%s", "</ds>\n\t\t";        
         }
@@ -1338,7 +1349,7 @@ sub dump {
                 $out.="<row>";
                 @line=_unpackd($self,$rrd->{rra}[$i]->{data}[$jj]);
                 for ($ii=0; $ii<$rrd->{ds_cnt}; $ii++) {
-                       $out.=sprintf "<v>%0.10e</v>", $line[$ii];
+                    $out.=sprintf "<v>%0.".$digits."e</v>", $line[$ii];
                 }
                 $out.=sprintf "%s", "</row>\n\t\t";
                 $t+=$rrd->{rra}[$i]->{pdp_cnt}*$rrd->{pdp_step};
@@ -2125,7 +2136,7 @@ L<rrdtool.pl|http://cpansearch.perl.org/src/DOUGLEITH/RRD-Editor-0.02/scripts/rr
  
 =head1 VERSION
  
-Ver 0.03
+Ver 0.04
  
 =head1 AUTHOR
  

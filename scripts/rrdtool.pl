@@ -52,7 +52,7 @@ if ($cmd eq "create") {
     
 } elsif ($cmd eq "info") {
     $rrd->open($file);
-    print $rrd->info();
+    print $rrd->info(join(" ",@ARGV));
     
 } elsif ($cmd eq "last") {
     $rrd->open($file);
