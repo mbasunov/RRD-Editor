@@ -15,7 +15,7 @@ ok(lc($rrd->info("-d=5")) eq lc($file), 'info()');
 #open $fd,">2"; print $fd $rrd->info("-d=5"); close $fd;
 open $fd, "<$scriptdir/test.rrd.dump"; @file=<$fd>;  $file=join("",@file);
 my $dump=$rrd->dump("-t -d=5"); #$dump=~ s/UTC/GMT/g;
-open $fd,">2"; print $fd $rrd->dump("-t -d=5"); close $fd;
+#open $fd,">2"; print $fd $rrd->dump("-t -d=5"); close $fd;
 ok(lc($dump) eq lc($file), 'dump()');
 open $fd, "<$scriptdir/test.rrd.fetch"; @file=<$fd>;  $file=join("",@file);
 ok(lc($rrd->fetch("AVERAGE -s=920804399 -d=5")) eq lc($file), "fetch()"); 

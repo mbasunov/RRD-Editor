@@ -1,5 +1,5 @@
-Revision history for RRD-DB
+Revision history for RRD-Editor
 
 0.01    Date/time
         First version, released on an unsuspecting world.
-
+0.06	Misc portability fixes (dealing with NaN, different precisions in calculations, different time zones etc)
