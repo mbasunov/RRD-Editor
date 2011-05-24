@@ -10,15 +10,16 @@ use strict;
 use warnings;
 
 require Exporter;
- use POSIX qw/strftime/;
+use POSIX qw/strftime/;
 use Carp qw(croak carp cluck);
-use Getopt::Long qw(GetOptionsFromString :config pass_through);
+#use Getopt::Long qw(GetOptionsFromString :config pass_through);
+use Getopt::Long qw(:config pass_through);
 use Time::HiRes qw(time);
 use Config;
 
 use vars qw($VERSION @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = '0.04';
+$VERSION = '0.05';
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
@@ -109,6 +110,19 @@ use constant PRIMARY_VAL    => 8;
 use constant SECONDARY_VAL  => 9;
 
 ###### private functions
+
+# older versions of Getopt::Long (e.g. used on Mac OS X) don't have this function, so lets add it explicitly
+sub _GetOptionsFromString(@) {
+    my ($string) = shift;
+    require Text::ParseWords;
+    my @temp=@ARGV;
+    @ARGV = Text::ParseWords::shellwords($string);
+    my $ret = GetOptions(@_);
+    my @args=@ARGV;
+    @ARGV=@temp;
+    return ( $ret, \@args );
+}
+
 ### used to extract information from raw RRD file and build corresponding structured arrays
 sub _get_header_size {
     # size of file header, in bytes
@@ -827,12 +841,10 @@ sub set_RRA_xff {
 sub update {
     # a re-implementation of rrdupdate.  updates file in place on disk, if possible - much faster.
     
-    use Getopt::Long qw(GetOptionsFromString :config pass_through);
-    
     my ($self, $args_str) = @_;  my $rrd=$self->{rrd};
     
     my $ret; my $args; my $template=''; 
-    ($ret, $args) = GetOptionsFromString($args_str,
+    ($ret, $args) = _GetOptionsFromString($args_str,
     "template|t:s" => \$template,
     );    
 
@@ -860,6 +872,7 @@ sub update {
     my @updvals; my @bits; my $rate; my $current_time; my $interval;
     for ($i=0; $i<@{$args}; $i++) {
         #parse colon-separated DS string
+        if ($args->[$i] =~ m/(-t|--template)/) {next;} # ignore option here
         if ($args->[$i] =~ m/\@/) {croak("\@ time format not supported - use either N or a unix timestamp\n");}
         @bits=split(/:/,$args->[$i]);
         if (@bits-1 < @idx) {croak("expected ".@idx." data source readings (got ".(@bits-1).") from ".$args->[$i],"\n");}
@@ -1153,13 +1166,12 @@ sub update {
 
 sub fetch {
     # dump out measurement data
-    use Getopt::Long qw(GetOptionsFromString :config pass_through);
     my ($self, $args_str) = @_;  my $rrd=$self->{rrd};
     my $out='';
     
     my $step=$rrd->{pdp_step}; my $start=time()-24*60*60; my $end=time(); my $digits=10; # number of digits printed for floats
     my $ret; my $args;
-    ($ret, $args) = GetOptionsFromString($args_str,
+    ($ret, $args) = _GetOptionsFromString($args_str,
     "resolution|r:i" => \$step,
     "start|s:i" => \$start,
     "end|e:i"  => \$end,
@@ -1169,7 +1181,7 @@ sub fetch {
     if ($start < 3600 * 24 * 365 * 10) {croak("the first entry to fetch should be after 1980");}
     if ($end < $start) {croak("start ($start) should be less than end ($end)");}
     if ($step<1) {croak("step must be >= 1 second");}
-    my $cf=uc($args->[0]); my $i;
+    my $cf=uc($args->[0]); my $i; # so CF must be first word in argument line
     if ($cf !~ m/AVERAGE|MIN|MAX|LAST/) {croak("unknown CF\n");}
     
     # find the RRA which best matches the requirements
@@ -1236,11 +1248,10 @@ sub info {
     my $self=$_[0]; my $rrd = $self->{rrd};
     my $out='';
     
-    use Getopt::Long qw(GetOptionsFromString :config pass_through);
     my $digits=10;
     if (defined($_[1])) {
         my $ret; my $args;
-        ($ret, $args) = GetOptionsFromString($_[1],
+        ($ret, $args) = _GetOptionsFromString($_[1],
         "digits|d:i" => \$digits
         );
     }
@@ -1288,13 +1299,12 @@ sub info {
 
 sub dump {
     # XML dump of RRD file
-    use Getopt::Long qw(GetOptionsFromString :config pass_through);
     my ($self, $args_str) = @_;  my $rrd=$self->{rrd};
 
     my $noheader=0; my $notimecomments=0; my $digits=10;
     if (defined($args_str)) {
         my $ret; my $args;
-        ($ret, $args) = GetOptionsFromString($args_str,
+        ($ret, $args) = _GetOptionsFromString($args_str,
         "no-header|n" => \$noheader,
         "notimecomments|t"  => \$notimecomments,
         "digits|d:i" => \$digits
@@ -1500,7 +1510,7 @@ sub create {
     my $last_up=time(); my $pdp_step=300; 
     my $encoding="native-double"; # default to RRDTOOL compatible encoding.
     my $ret; my $args;
-    ($ret, $args) = GetOptionsFromString($args_str,
+    ($ret, $args) = _GetOptionsFromString($args_str,
     "start|b:i" => \$last_up,
     "step|s:i"  => \$pdp_step,
     "format|f:s"  => \$encoding
@@ -2136,7 +2146,7 @@ L<rrdtool.pl|http://cpansearch.perl.org/src/DOUGLEITH/RRD-Editor-0.02/scripts/rr
  
 =head1 VERSION
  
-Ver 0.04
+Ver 0.05
  
 =head1 AUTHOR
  

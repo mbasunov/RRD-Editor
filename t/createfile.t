@@ -9,7 +9,7 @@ my $scriptdir=File::Spec->rel2abs(dirname(__FILE__));
 
 my $rrd = RRD::Editor->new();
 ok( defined $rrd, 'new()' );
-ok( $rrd->create("--format portable-double --start 920804399 DS:el1:COUNTER:600:U:U DS:el2:GAUGE:600:U:U DS:el3:DERIVE:600:U:U DS:el4:ABSOLUTE:600:U:U RRA:AVERAGE:0.5:1:5 RRA:AVERAGE:0.5:2:5 RRA:LAST:0.5:2:5 RRA:MAX:0.5:2:5 RRA:MIN:0.5:2:5"), "create()");
+ok( $rrd->create("--format=portable-double --start=920804399 DS:el1:COUNTER:600:U:U DS:el2:GAUGE:600:U:U DS:el3:DERIVE:600:U:U DS:el4:ABSOLUTE:600:U:U RRA:AVERAGE:0.5:1:5 RRA:AVERAGE:0.5:2:5 RRA:LAST:0.5:2:5 RRA:MAX:0.5:2:5 RRA:MIN:0.5:2:5"), "create()");
 my $j=920804400; 
 ok( $rrd->update("$j:1:2.1:3:4"), "update()" );
 $j+=300; ok($rrd->update("$j:6471:842.4:93:484"));
