@@ -19,7 +19,7 @@ use Config;
 
 use vars qw($VERSION @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = '0.06';
+$VERSION = '0.07';
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
@@ -56,19 +56,16 @@ return pack("d",_cookie_C());
 };
     # Inline not available.
     # Try approach that avoids need for Inline module.  Ok so long as machine uses IEEE doubles (i.e. all modern machines) 
-    # and either little-endian or big-endian byte order (i.e. most modern machines):
-    if (substr($Config{byteorder},0,4) eq "1234") {
-        if ($Config{myarchname} =~ m/^arm/i && NATIVE_LONG_EL_SIZE==4) {
-            # For 32 bit ARMv5 processors.  ARM changes the byte order of doubles
-            # depending on alignment with 32 bit boundaries - this only affects the float cookie byte ordering.
-            return chr(67). chr(43). chr(31). chr(91). chr(47). chr(37). chr(192). chr(199); 
-        } else {    
-            return chr(47). chr(37). chr(192). chr(199). chr(67). chr(43). chr(31). chr(91); # regular little endian
-        }
-    } elsif (substr($Config{byteorder},0,4) eq "4321") {
+    # and little-endian, big-endian and mixed-endian byte order (i.e. almost all modern machines):
+    my $endiantest=unpack("h*", pack("d","1000.1234"));
+    if ($endiantest eq "c92a329bcf04f804") {
+        return chr(47). chr(37). chr(192). chr(199). chr(67). chr(43). chr(31). chr(91); # little endian
+    } elsif ($endiantest eq "04f804cf9b322ac9") {
         return chr(91). chr(31). chr(43). chr(67). chr(199). chr(192). chr(37). chr(47); # big endian
+    } elsif ($endiantest eq "cf04f804c92a329b") {
+        return chr(67). chr(43). chr(31). chr(91). chr(47). chr(37). chr(192). chr(199); # mixed endian (used by some ARM processors)
     } else {
-        cluck("Warning: To work with native (non-portable) RRD files, you need to install the perl Inline C module (e.g. by typing 'cpan -i Inline')\n");
+        warn("Warning: To work with native (non-portable) RRD files, you need to install the perl Inline C module (e.g. by typing 'cpan -i Inline')\n");
         return chr(67). chr(43). chr(31). chr(91). chr(47). chr(37). chr(192). chr(199);
     } 
 }
@@ -79,11 +76,10 @@ use constant  SINGLE_FLOATCOOKIE                =>   8.6421343830016e+13;  # coo
 
 sub _native_double {
    # figure out the long/double alignment needed for the RRDTOOL file format
-    if ($Config{myarchname} =~ m/^(mips|ppc)/i && NATIVE_LONG_EL_SIZE==4) { # TODO: this check works on non-Linux/Darwin systems, but also on others ?
-                                                                            # Only affects behaviour when writing new files from scratch, 
-                                                                            # otherwise can figure out the right alignment to use when reading 
-                                                                            # an existing file
-        # For 32 bit MIPS and PowerPC machines, align long ints on 32 bit boundaries and doubles on 64 bit boundaries
+    if ($Config{myarchname} =~ m/^(sparc|mips|ppc)/i && NATIVE_LONG_EL_SIZE==4) { # Only affects behaviour when writing new files from scratch,                                                                         
+                                                                            # otherwise can figure out the right alignment to use when  
+                                                                            # reading an existing file
+        # For 32 bit MIPS, MIPSel and PowerPC machines, align long ints on 32 bit boundaries and doubles on 64 bit boundaries
         return "native-double-mixed";
     } else {
         # Otherwise, align longs/doubles on 32 bit machines on 32 bit boundaries, and 64 bit machines on 64 bit boundaries.
@@ -96,6 +92,10 @@ eval {
     my $test=pack("d<",\(DOUBLE_FLOATCOOKIE));
 };
 our $PACK_LITTLE_ENDIAN_SUPPORT = (length($@)>0 ? 0 : 1);
+
+# Define NaN.  Usually just "nan", except on SH4
+our $NAN = 0+"nan"; 
+our $UNAN=$NAN; $UNAN =~ s/^-//; # remove any sign from NaN
 
 # define index into elements in CDP_PREP array
 use constant VAL            => 0;
@@ -164,7 +164,7 @@ sub _packd {
         # manually pack an IEEE 754 32bit single precision number in little-endian order
         for (my $i=0; $i<@{$_[1]}; $i++) {
             $f=@{$_[1]}[$i];
-            if ($f =~ m/nan/) {
+            if ($f =~ m/$UNAN/) {
                 $sign=0; $exp=255; $significand=1;
             } elsif ($f eq "-inf") {
                 $sign=1; $exp=255; $significand=0;
@@ -192,7 +192,7 @@ sub _packd {
         # manuallly pack IEEE 754 64 bit double precision in little-endian order
         for (my $i=0; $i<@{$_[1]}; $i++) {
             $f=@{$_[1]}[$i];
-            if ($f =~ m/nan/) {
+            if ($f =~ m/$UNAN/) {
                 $sign=0; $exp=2047; $significandhi=1;$significandlo=1;
             } elsif ($f eq "-inf") {
                 $sign=1; $exp=2047; $significandhi=0;$significandlo=0;
@@ -255,7 +255,7 @@ sub _unpackd {
             if ($expo == 128 && $mant == 0 ) {
                 $num=$sign>0 ? 0+"inf" : 0-"inf";
             } elsif ($expo == 128) {
-                $num=0+"nan";
+                $num=$NAN;
             } elsif ($expo == -127 && $mant ==0) {
                 $num=0;
             } else {
@@ -275,7 +275,7 @@ sub _unpackd {
             if ($expo == 1024 && $mantlo == 0 && $manthi==0 ) {
                 $num=$sign*(0+"inf");
             } elsif ($expo == 1024) {
-                $num=0+"nan";
+                $num=$NAN;
             } elsif ($expo==-1023 && $manthi==0 && $mantlo==0) {
                 $num=0;
             } else {
@@ -706,8 +706,8 @@ sub add_DS {
 
     # update DS definitions
     my $ds; 
-    my $min=$4;  if ($min eq "U") {$min=0+"nan";} # set to NaN
-    my $max=$5;  if ($max eq "U") {$max=0+"nan";} # set to NaN
+    my $min=$4;  if ($min eq "U") {$min=$NAN;} # set to NaN
+    my $max=$5;  if ($max eq "U") {$max=$NAN;} # set to NaN
     ($ds->{name}, $ds->{type}, $ds->{hb}, $ds->{min}, $ds->{max}, 
      $ds->{pdp_prep}->{last_ds}, $ds->{pdp_prep}->{unkn_sec_cnt}, $ds->{pdp_prep}->{val},
     )= ($1,$2,$3,$min,$max,"U", $rrd->{last_up}%$rrd->{pdp_step}, 0.0);
@@ -717,14 +717,14 @@ sub add_DS {
     # update RRAs
     my $ii;
     for ($ii=0; $ii<$rrd->{rra_cnt}; $ii++) {
-        @{$rrd->{rra}[$ii]->{cdp_prep}[$rrd->{ds_cnt}-1]} = (0+"nan",(($rrd->{last_up}-$rrd->{last_up}%$rrd->{pdp_step})%($rrd->{pdp_step}*$rrd->{rra}[$ii]->{pdp_cnt}))/$rrd->{pdp_step},0,0,0,0,0,0,0,0);
+        @{$rrd->{rra}[$ii]->{cdp_prep}[$rrd->{ds_cnt}-1]} = ($NAN,(($rrd->{last_up}-$rrd->{last_up}%$rrd->{pdp_step})%($rrd->{pdp_step}*$rrd->{rra}[$ii]->{pdp_cnt}))/$rrd->{pdp_step},0,0,0,0,0,0,0,0);
     }
     # update data
     my @line; my $i;
     for ($ii=0; $ii<$rrd->{rra_cnt}; $ii++) {
         for ($i=0; $i<$rrd->{rra}[$ii]->{row_cnt}; $i++) {
             @line=_unpackd($self,$rrd->{rra}[$ii]->{data}[$i]);
-            $line[$rrd->{ds_cnt}-1]=0+"nan";
+            $line[$rrd->{ds_cnt}-1]=$NAN;
             $rrd->{rra}[$ii]->{data}[$i]=_packd($self,\@line);
         }
     }
@@ -786,10 +786,10 @@ sub add_RRA {
  
     my $i; 
     for ($i=0; $i<$rrd->{ds_cnt}; $i++) {
-       @{$rrd->{rra}[$idx]->{cdp_prep}[$i]} = (0+"nan",(($rrd->{last_up}-$rrd->{last_up}%$rrd->{pdp_step})%($rrd->{pdp_step}*$rrd->{rra}[$idx]->{pdp_cnt}))/$rrd->{pdp_step},0,0,0,0,0,0,0,0);
+       @{$rrd->{rra}[$idx]->{cdp_prep}[$i]} = ($NAN,(($rrd->{last_up}-$rrd->{last_up}%$rrd->{pdp_step})%($rrd->{pdp_step}*$rrd->{rra}[$idx]->{pdp_cnt}))/$rrd->{pdp_step},0,0,0,0,0,0,0,0);
     }
     # update data
-    my @empty=((0+"nan")x$rrd->{ds_cnt});
+    my @empty=(($NAN)x$rrd->{ds_cnt});
     for ($i=0; $i<$rrd->{rra}[$idx]->{row_cnt}; $i++) {
         $rrd->{rra}[$idx]->{data}[$i] = _packd($self,\@empty);
     }
@@ -818,7 +818,7 @@ sub resize_RRA {
     # load RRA data, if not already loaded
     if (!defined($rrd->{dataloaded})) {_loadRRAdata($self);}
     # update data
-    my @empty=((0+"nan")x$rrd->{ds_cnt});
+    my @empty=(($NAN)x$rrd->{ds_cnt});
     for (my $i=$rrd->{rra}[$idx]->{row_cnt}; $i<$size; $i++) {
         $rrd->{rra}[$idx]->{data}[$i] = _packd($self,\@empty);
     }
@@ -897,7 +897,7 @@ sub update {
                 $rrd->{ds}[$j]->{pdp_prep}->{last_ds}="U";
             }
             if ($updvals[$j] ne "U" && $rrd->{ds}[$j]->{hb} >= $interval) {
-                $rate=0+"nan";
+                $rate=$NAN;
                 if ( $rrd->{ds}[$j]->{type} eq "COUNTER" ) {
                     if ($updvals[$j] !~ m/^\d+$/) {croak("not a simple unsigned integer ".$updvals[$j]);}
                     if ($rrd->{ds}[$j]->{pdp_prep}->{last_ds} ne "U") {
@@ -908,7 +908,7 @@ sub update {
                         if ($pdp_new[$j] < 0) {$pdp_new[$j]+=18446744069414584320; }  #2^64-2^32
                         $rate=$pdp_new[$j]/$interval;
                     } else {
-                        $pdp_new[$j]=0+"nan";
+                        $pdp_new[$j]=$NAN;
                     }
                 } elsif ( $rrd->{ds}[$j]->{type} eq "DERIVE" ) {
                     if ($updvals[$j] !~ m/^[+|-]?\d+$/) {croak("not a simple signed integer ".$updvals[$j]);}
@@ -917,7 +917,7 @@ sub update {
                         $pdp_new[$j] =  $updvals[$j] - $rrd->{ds}[$j]->{pdp_prep}->{last_ds};
                         $rate=$pdp_new[$j]/$interval;
                     } else {
-                        $pdp_new[$j]=0+"nan";
+                        $pdp_new[$j]=$NAN;
                     }
                 } elsif ( $rrd->{ds}[$j]->{type} eq "GAUGE" ) {
                     if ($updvals[$j] !~ m/^(-)?[\d]+(\.[\d]+)?$/) {croak("not a number ".$updvals[$j]);}
@@ -927,15 +927,15 @@ sub update {
                     $pdp_new[$j] = $updvals[$j];
                     $rate=$pdp_new[$j]/$interval;
                 }
-                if ($rate !~ m/nan/ 
+                if ($rate !~ m/$UNAN/ 
                     && (
-                    ($rrd->{ds}[$j]->{max} !~ m/nan/ && $rate >$rrd->{ds}[$j]->{max})
-                    || ($rrd->{ds}[$j]->{min} !~ m/nan/ && $rate <$rrd->{ds}[$j]->{min})
+                    ($rrd->{ds}[$j]->{max} !~ m/$UNAN/ && $rate >$rrd->{ds}[$j]->{max})
+                    || ($rrd->{ds}[$j]->{min} !~ m/$UNAN/ && $rate <$rrd->{ds}[$j]->{min})
                     )) {
-                    $pdp_new[$j]=0+"nan";
+                    $pdp_new[$j]=$NAN;
                 }
             } else {
-                $pdp_new[$j]=0+"nan";
+                $pdp_new[$j]=$NAN;
             }
             $rrd->{ds}[$j]->{pdp_prep}->{last_ds} = $updvals[$j];
         }
@@ -958,9 +958,9 @@ sub update {
         if ($elapsed_pdp_st == 0) {
             # nope, simple_update
             for ($j=0; $j<$rrd->{ds_cnt}; $j++) {
-                if ($pdp_new[$j] =~ m/nan/) { 
+                if ($pdp_new[$j] =~ m/$UNAN/) { 
                     $rrd->{ds}[$j]->{pdp_prep}->{unkn_sec_cnt} += int($interval); 
-                } elsif ($rrd->{ds}[$j]->{pdp_prep}->{val} =~ m/nan/ ) {
+                } elsif ($rrd->{ds}[$j]->{pdp_prep}->{val} =~ m/$UNAN/ ) {
                     $rrd->{ds}[$j]->{pdp_prep}->{val} = $pdp_new[$j];
                 } else {
                     $rrd->{ds}[$j]->{pdp_prep}->{val} += $pdp_new[$j];
@@ -974,25 +974,25 @@ sub update {
                 # Process an update that occurs after one of the PDP moments.
                 # Increments the PDP value, sets NAN if time greater than the heartbeats have elapsed
                 $pre_unknown=0; 
-                if ($pdp_new[$j] =~ m/nan/) {
+                if ($pdp_new[$j] =~ m/$UNAN/) {
                      $pre_unknown=$pre_int;
                 } else {
                     #print $rrd->{ds}[$j]->{pdp_prep}->{val}," ";
-                    if ($rrd->{ds}[$j]->{pdp_prep}->{val} =~ m/nan/) {
+                    if ($rrd->{ds}[$j]->{pdp_prep}->{val} =~ m/$UNAN/) {
                         $rrd->{ds}[$j]->{pdp_prep}->{val} = 0;
                     } 
                     $rrd->{ds}[$j]->{pdp_prep}->{val} += $pdp_new[$j]/$interval * $pre_int;
                 }
                 #print $pdp_new[$j]," ",$interval," ",$pre_int," ",$rrd->{ds}[$j]->{pdp_prep}->{val},"\n";
                 if ($interval > $rrd->{ds}[$j]->{hb} || $rrd->{pdp_step}/2.0 < $rrd->{ds}[$j]->{pdp_prep}->{unkn_sec_cnt}+$pre_unknown) {
-                    $pdp_temp[$j]=0+"nan";
+                    $pdp_temp[$j]=$NAN;
                 } else {
                     $pdp_temp[$j]=$rrd->{ds}[$j]->{pdp_prep}->{val}/($elapsed_pdp_st*$rrd->{pdp_step}-$rrd->{ds}[$j]->{pdp_prep}->{unkn_sec_cnt}-$pre_unknown);
                 }
                 #print $pdp_new[$j]," ",$pdp_temp[$j]," ",$rrd->{ds}[$j]->{pdp_prep}->{val}," ", $elapsed_pdp_st-$rrd->{ds}[$j]->{pdp_prep}->{unkn_sec_cnt}-$pre_unknown,"\n";
-                if ($pdp_new[$j] =~ m/nan/) {
+                if ($pdp_new[$j] =~ m/$UNAN/) {
                     $rrd->{ds}[$j]->{pdp_prep}->{unkn_sec_cnt} = int($post_int);
-                    $rrd->{ds}[$j]->{pdp_prep}->{val}=0+"nan";
+                    $rrd->{ds}[$j]->{pdp_prep}->{val}=$NAN;
                 } else {
                     $rrd->{ds}[$j]->{pdp_prep}->{unkn_sec_cnt} = 0;
                     $rrd->{ds}[$j]->{pdp_prep}->{val}=$pdp_new[$j]/$interval*$post_int;
@@ -1015,35 +1015,35 @@ sub update {
                     if ($rrd->{rra}[$ii]->{pdp_cnt} > 1) {
                         # update_cdp. Given the new reading (pdp_temp_val), update or initialize the CDP value, primary value, secondary value, and # of unknowns.
                         if ($rra_step_cnt[$ii]>0) {
-                            if ($pdp_temp[$j] =~ m/nan/) {
+                            if ($pdp_temp[$j] =~ m/$UNAN/) {
                                 $rrd->{rra}[$ii]->{cdp_prep}[$j]->[UNKN_PDP_CNT] +=$start_pdp_offset;
-                                $rrd->{rra}[$ii]->{cdp_prep}[$j]->[SECONDARY_VAL] = 0+"nan";
+                                $rrd->{rra}[$ii]->{cdp_prep}[$j]->[SECONDARY_VAL] = $NAN;
                             } else {
                                 $rrd->{rra}[$ii]->{cdp_prep}[$j]->[SECONDARY_VAL] = $pdp_temp[$j];
                             }
                             if ($rrd->{rra}[$ii]->{cdp_prep}[$j]->[UNKN_PDP_CNT] > $rrd->{rra}[$ii]->{pdp_cnt}*$rrd->{rra}[$ii]->{xff}) {
-                                $rrd->{rra}[$ii]->{cdp_prep}[$j]->[PRIMARY_VAL] = 0+"nan";
+                                $rrd->{rra}[$ii]->{cdp_prep}[$j]->[PRIMARY_VAL] = $NAN;
                             } else {
                                 #initialize_cdp_val
                                 if ($rrd->{rra}[$ii]->{name} eq "AVERAGE") {
-                                    if ($rrd->{rra}[$ii]->{cdp_prep}[$j]->[VAL] =~ m/nan/) {
+                                    if ($rrd->{rra}[$ii]->{cdp_prep}[$j]->[VAL] =~ m/$UNAN/) {
                                         $cum_val=0.0;
                                     } else {
                                         $cum_val = $rrd->{rra}[$ii]->{cdp_prep}[$j]->[VAL];
                                     }
-                                    if ($pdp_temp[$j] =~ m/nan/) {
+                                    if ($pdp_temp[$j] =~ m/$UNAN/) {
                                         $cur_val=0.0;
                                     } else {
                                         $cur_val = $pdp_temp[$j];
                                     }
                                     $rrd->{rra}[$ii]->{cdp_prep}[$j]->[PRIMARY_VAL] = ($cum_val+$cur_val*$start_pdp_offset)/($rrd->{rra}[$ii]->{pdp_cnt}-$rrd->{rra}[$ii]->{cdp_prep}[$j]->[UNKN_PDP_CNT]);
                                 } elsif ($rrd->{rra}[$ii]->{name} eq "MAX") {
-                                    if ($rrd->{rra}[$ii]->{cdp_prep}[$j]->[VAL] =~ m/nan/) {
+                                    if ($rrd->{rra}[$ii]->{cdp_prep}[$j]->[VAL] =~ m/$UNAN/) {
                                         $cum_val=0-"inf";
                                     } else {
                                         $cum_val = $rrd->{rra}[$ii]->{cdp_prep}[$j]->[VAL];
                                     }
-                                    if ($pdp_temp[$j] =~ m/nan/) {
+                                    if ($pdp_temp[$j] =~ m/$UNAN/) {
                                         $cur_val=0-"inf";
                                     } else {
                                         $cur_val = $pdp_temp[$j];
@@ -1054,12 +1054,12 @@ sub update {
                                         $rrd->{rra}[$ii]->{cdp_prep}[$j]->[PRIMARY_VAL] = $cum_val;
                                     }
                                 } elsif ($rrd->{rra}[$ii]->{name} eq "MIN") {
-                                    if ($rrd->{rra}[$ii]->{cdp_prep}[$j]->[VAL] =~ m/nan/) {
+                                    if ($rrd->{rra}[$ii]->{cdp_prep}[$j]->[VAL] =~ m/$UNAN/) {
                                         $cum_val=0+"inf";
                                     } else {
                                         $cum_val = $rrd->{rra}[$ii]->{cdp_prep}[$j]->[VAL];
                                     }
-                                    if ($pdp_temp[$j] =~ m/nan/) {
+                                    if ($pdp_temp[$j] =~ m/$UNAN/) {
                                         $cur_val=0+"inf";
                                     } else {
                                         $cur_val = $pdp_temp[$j];
@@ -1075,7 +1075,7 @@ sub update {
                             }
                             #*cdp_val = initialize_carry_over
                             $pdp_into_cdp_cnt=($elapsed_pdp_st - $start_pdp_offset) % $rrd->{rra}[$ii]->{pdp_cnt};
-                            if ($pdp_into_cdp_cnt == 0 || $pdp_temp[$j] =~ m/nan/) {
+                            if ($pdp_into_cdp_cnt == 0 || $pdp_temp[$j] =~ m/$UNAN/) {
                                 if ($rrd->{rra}[$ii]->{name} eq "MAX") {
                                     $rrd->{rra}[$ii]->{cdp_prep}[$j]->[VAL]=0-"inf";
                                 } elsif ($rrd->{rra}[$ii]->{name} eq "MIN") {
@@ -1083,7 +1083,7 @@ sub update {
                                 } elsif ($rrd->{rra}[$ii]->{name} eq "AVERAGE") {
                                     $rrd->{rra}[$ii]->{cdp_prep}[$j]->[VAL]=0;
                                 } else {
-                                    $rrd->{rra}[$ii]->{cdp_prep}[$j]->[VAL]=0+"nan";
+                                    $rrd->{rra}[$ii]->{cdp_prep}[$j]->[VAL]=$NAN;
                                 }
                             } else {
                                 if ($rrd->{rra}[$ii]->{name} eq "AVERAGE") {
@@ -1092,17 +1092,17 @@ sub update {
                                     $rrd->{rra}[$ii]->{cdp_prep}[$j]->[VAL]=$pdp_temp[$j];
                                 }
                             }
-                            if ($pdp_temp[$j] =~ m/nan/) {
+                            if ($pdp_temp[$j] =~ m/$UNAN/) {
                                 $rrd->{rra}[$ii]->{cdp_prep}[$j]->[UNKN_PDP_CNT] = ($elapsed_pdp_st - $start_pdp_offset) % $rrd->{rra}[$ii]->{pdp_cnt};
                             } else {
                                 $rrd->{rra}[$ii]->{cdp_prep}[$j]->[UNKN_PDP_CNT] = 0;
                             }
                         } else {
-                            if ($pdp_temp[$j] =~ m/nan/) {
+                            if ($pdp_temp[$j] =~ m/$UNAN/) {
                                 $rrd->{rra}[$ii]->{cdp_prep}[$j]->[UNKN_PDP_CNT] += $elapsed_pdp_st;
                             } else {
                                 #*cdp_val =calculate_cdp_val
-                                if ($rrd->{rra}[$ii]->{cdp_prep}[$j]->[VAL] =~ m/nan/) {
+                                if ($rrd->{rra}[$ii]->{cdp_prep}[$j]->[VAL] =~ m/$UNAN/) {
                                     if ($rrd->{rra}[$ii]->{name} eq "AVERAGE") {
                                         $pdp_temp[$j] *= $elapsed_pdp_st;
                                     } 
@@ -1248,16 +1248,17 @@ sub info {
     my $self=$_[0]; my $rrd = $self->{rrd};
     my $out='';
     
-    my $digits=10;
+    my $digits=10; my $noencoding=0;
     if (defined($_[1])) {
         my $ret; my $args;
         ($ret, $args) = _GetOptionsFromString($_[1],
-        "digits|d:i" => \$digits
+        "digits|d:i" => \$digits,
+        "noformat|n"   => \$noencoding
         );
     }
     
     $out.=sprintf "%s", "rrd_version = ".$rrd->{version}."\n";
-    if (@_==1) {
+    if ($noencoding<0.5) {
        $out.=sprintf "%s", "encoding = ";
        if ($self->{encoding} eq "native-double-simple" || $self->{encoding} eq "native-double-mixed") {
 	      $out.="native-double";
@@ -1276,13 +1277,13 @@ sub info {
         $out.=sprintf "%s", "$str.index = ".$i."\n";
         $out.=sprintf "%s", "$str.type = \"".$rrd->{ds}[$i]->{type}."\"\n";
         $out.=sprintf "%s", "$str.minimal_heartbeat = ".$rrd->{ds}[$i]->{hb}."\n";
-        my $min= $rrd->{ds}[$i]->{min}=~m/nan/ ? "nan" : $rrd->{ds}[$i]->{min};
-        my $max= $rrd->{ds}[$i]->{max}=~m/nan/ ? "nan" : $rrd->{ds}[$i]->{max};
-        my $val= $rrd->{ds}[$i]->{pdp_prep}->{val} =~m/nan/ ? "nan" :$rrd->{ds}[$i]->{pdp_prep}->{val};
+        my $min= $rrd->{ds}[$i]->{min}=~m/$UNAN/ ? "nan" : $rrd->{ds}[$i]->{min};
+        my $max= $rrd->{ds}[$i]->{max}=~m/$UNAN/ ? "nan" : $rrd->{ds}[$i]->{max};
+        my $val= $rrd->{ds}[$i]->{pdp_prep}->{val} =~m/$UNAN/ ? "nan" : sprintf  "%0.".$digits."e",$rrd->{ds}[$i]->{pdp_prep}->{val};
         $out.=sprintf "%s", "$str.min = ".$min."\n";
         $out.=sprintf "%s", "$str.max = ".$max."\n";
         $out.=sprintf "%s", "$str.last_ds = \"".$rrd->{ds}[$i]->{pdp_prep}->{last_ds}."\"\n";
-        $out.=sprintf "$str.value = %0.".$digits."e\n",$val;
+        $out.=sprintf "$str.value = ".$val."\n";
         $out.=sprintf "%s", "$str.unknown_sec = ".$rrd->{ds}[$i]->{pdp_prep}->{unkn_sec_cnt}."\n";
     }
     for ($i=0; $i<$rrd->{rra_cnt}; $i++) {
@@ -1293,7 +1294,8 @@ sub info {
         $out.=sprintf "%s", "$str.pdp_per_row = ".$rrd->{rra}[$i]->{pdp_cnt}."\n";
         $out.=sprintf "$str.xff = %0.".$digits."e\n",$rrd->{rra}[$i]->{xff};
         for ($ii=0; $ii<$rrd->{ds_cnt}; $ii++) {
-            $out.=sprintf "$str.cdp_prep[$ii].value = %0.".$digits."e\n",$rrd->{rra}[$i]->{cdp_prep}[$ii]->[VAL];
+             my $val= $rrd->{rra}[$i]->{cdp_prep}[$ii]->[VAL] =~m/$UNAN/ ? "nan" : sprintf  "%0.".$digits."e",$rrd->{rra}[$i]->{cdp_prep}[$ii]->[VAL];
+            $out.=sprintf "$str.cdp_prep[$ii].value = ".$val."\n";
             $out.=sprintf "%s", "$str.cdp_prep[$ii].unknown_datapoints = ".$rrd->{rra}[$i]->{cdp_prep}[$ii]->[UNKN_PDP_CNT]."\n";
         }
     }
@@ -1328,17 +1330,17 @@ sub dump {
     $out.=sprintf "%s", "\t<step>".$rrd->{pdp_step}."</step> <!-- Seconds -->\n\t<lastupdate>".$rrd->{last_up}."</lastupdate>";
     if ($timecomments) {$out.=" <!-- ".strftime("%Y-%m-%d %T %Z",localtime($rrd->{last_up})). "-->";}
     $out.="\n\t";
-    my $i; my $ii; my $j; my $jj; my $t;
+    my $i; my $ii; my $j; my $jj; my $t; my $val;
     for ($i=0; $i<$rrd->{ds_cnt}; $i++) { 
         $out.=sprintf "%s", "\n\t<ds>\n\t\t<name>".$rrd->{ds}[$i]->{name}."</name>\n\t\t";
         $out.=sprintf "%s", "<type>".$rrd->{ds}[$i]->{type}."</type>\n\t\t";
         $out.=sprintf "%s", "<minimal_heartbeat>".$rrd->{ds}[$i]->{hb}."</minimal_heartbeat>\n\t\t";
-        my $min= $rrd->{ds}[$i]->{min}=~m/nan/ ? "nan" : $rrd->{ds}[$i]->{min};
-        my $max= $rrd->{ds}[$i]->{max}=~m/nan/ ? "nan" : $rrd->{ds}[$i]->{max};
-        my $val= $rrd->{ds}[$i]->{pdp_prep}->{val} =~m/nan/ ? "nan" :$rrd->{ds}[$i]->{pdp_prep}->{val};
+        my $min= $rrd->{ds}[$i]->{min}=~m/$UNAN/ ? "nan" : $rrd->{ds}[$i]->{min};
+        my $max= $rrd->{ds}[$i]->{max}=~m/$UNAN/ ? "nan" : $rrd->{ds}[$i]->{max};
+        my $val= $rrd->{ds}[$i]->{pdp_prep}->{val} =~m/$UNAN/ ? "nan" : sprintf  "%0.".$digits."e",$rrd->{ds}[$i]->{pdp_prep}->{val};
         $out.=sprintf "%s", "<min>".$min."</min>\n\t\t<max>".$max."</max>\n\t\t";
         $out.=sprintf "%s", "\n\t\t<!-- PDP Status -->\n\t\t<last_ds>".$rrd->{ds}[$i]->{pdp_prep}->{last_ds}."</last_ds>\n\t\t";
-        $out.=sprintf "<value>%0.".$digits."e</value>\n\t\t", $val;
+        $out.=sprintf "<value>".$val."</value>\n\t\t";
         $out.=sprintf "%s", "<unknown_sec>".$rrd->{ds}[$i]->{pdp_prep}->{unkn_sec_cnt}."</unknown_sec>\n\t";
         $out.=sprintf "%s", "</ds>\n";
     }
@@ -1352,7 +1354,8 @@ sub dump {
         for ($ii=0; $ii<$rrd->{ds_cnt}; $ii++) {
             $out.=sprintf "\t<ds>\n\t\t\t<primary_value>%0.".$digits."e</primary_value>\n\t\t\t", $rrd->{rra}[$i]->{cdp_prep}[$ii]->[PRIMARY_VAL];
             $out.=sprintf "<secondary_value>%0.".$digits."e</secondary_value>\n\t\t\t", $rrd->{rra}[$i]->{cdp_prep}[$ii]->[SECONDARY_VAL];
-			$out.=sprintf "<value>%0.".$digits."e</value>\n\t\t\t", $rrd->{rra}[$i]->{cdp_prep}[$ii]->[VAL];
+            $val= $rrd->{rra}[$i]->{cdp_prep}[$ii]->[VAL]=~m/$UNAN/ ? "nan" : sprintf  "%0.".$digits."e",$rrd->{rra}[$i]->{cdp_prep}[$ii]->[VAL];
+			$out.=sprintf "<value>".$val."</value>\n\t\t\t";
 			$out.=sprintf "%s", "<unknown_datapoints>". $rrd->{rra}[$i]->{cdp_prep}[$ii]->[UNKN_PDP_CNT]."</unknown_datapoints>\n\t\t\t";            
             $out.=sprintf "%s", "</ds>\n\t\t";        
         }
@@ -1362,10 +1365,11 @@ sub dump {
             for ($j=0; $j<$rrd->{rra}[$i]->{row_cnt}; $j++) {
                 $jj= ($rrd->{rra}[$i]->{ptr}+1 + $j)%$rrd->{rra}[$i]->{row_cnt};
                 if ($timecomments) {$out.=sprintf "\t%s", "<!-- ".strftime("%Y-%m-%d %T %Z",localtime($t)). " / $t --> ";}
-                $out.="<row>";
+                $out.="<row>"; 
                 @line=_unpackd($self,$rrd->{rra}[$i]->{data}[$jj]);
                 for ($ii=0; $ii<$rrd->{ds_cnt}; $ii++) {
-                    $out.=sprintf "<v>%0.".$digits."e</v>", $line[$ii];
+                    $val= $line[$ii]=~m/$UNAN/ ? "nan" : sprintf  "%0.".$digits."e",$line[$ii];
+                    $out.=sprintf "<v>".$val."</v>";
                 }
                 $out.=sprintf "%s", "</row>\n\t\t";
                 $t+=$rrd->{rra}[$i]->{pdp_cnt}*$rrd->{pdp_step};
@@ -1538,8 +1542,8 @@ sub create {
     for ($i=0; $i<@{$args}; $i++) {
         if (${$args}[$i] =~ m/^DS:([a-zA-Z0-9]+):(GAUGE|COUNTER|DERIVE|ABSOLUTE):([0-9]+):(U|[0-9\.]+):(U|[0-9\.]+)$/) {
             my $ds; 
-            $min=$4;  if ($min eq "U") {$min=0+"nan";} # set to NaN
-            $max=$5;  if ($max eq "U") {$max=0+"nan";} # set to NaN
+            $min=$4;  if ($min eq "U") {$min=$NAN;} # set to NaN
+            $max=$5;  if ($max eq "U") {$max=$NAN;} # set to NaN
             ($ds->{name}, $ds->{type}, $ds->{hb}, $ds->{min}, $ds->{max}, 
             $ds->{pdp_prep}->{last_ds}, $ds->{pdp_prep}->{unkn_sec_cnt}, $ds->{pdp_prep}->{val}
             )= ($1,$2,$3,$min,$max,"U", $last_up%$pdp_step, 0.0);
@@ -1561,13 +1565,13 @@ sub create {
     my $ii;
     for ($ii=0; $ii<$rrd->{rra_cnt}; $ii++) {
         for ($i=0; $i<$rrd->{ds_cnt}; $i++) {
-            @{$rrd->{rra}[$ii]->{cdp_prep}[$i]} = (0+"nan",(($last_up-$last_up%$pdp_step)%($pdp_step*$rrd->{rra}[$ii]->{pdp_cnt}))/$pdp_step,0,0,0,0,0,0,0,0);
+            @{$rrd->{rra}[$ii]->{cdp_prep}[$i]} = ($NAN,(($last_up-$last_up%$pdp_step)%($pdp_step*$rrd->{rra}[$ii]->{pdp_cnt}))/$pdp_step,0,0,0,0,0,0,0,0);
         }
     }
  
     # initialise the data
     my $j;
-    my @empty=((0+"nan")x$rrd->{ds_cnt});
+    my @empty=(($NAN)x$rrd->{ds_cnt});
     for ($ii=0; $ii<$rrd->{rra_cnt}; $ii++) {
         for ($i=0; $i<$rrd->{rra}[$ii]->{row_cnt}; $i++) {
             $rrd->{rra}[$ii]->{data}[$i]=_packd($self,\@empty);
@@ -2142,7 +2146,11 @@ The tag C<all> is available to easily export everything:
  
 The RRD::Editor code is portable, and so long as you stick to using the C<portable-double> and C<portable-single> file formats the RRD files generated will also be portable.  Portability issues arise when the C<native-double> file format of RRD::Editor is used to store RRDs.  This format tries to be compatible with the non-portable binary format used by RRDTOOL, which requires RRD::Editor to figure out nasty low-level details of the platform it is running on (byte ordering, byte alignment, representation used for doubles etc).   To date, RRD::Editor and RRDTOOL have been confirmed compatible (i.e. they can read each others RRD files in C<native-double> format) on the following platforms:
 
-Intel 686 32bit, AMD64/Intel x86 64bit, ARMv5 32bit (little-endian), MIPS 32bit (Malta), PowerPC 32bit
+Intel 386 32 bit, Intel 686 32bit, AMD64/Intel x86 64bit, MIPS 32bit, MIPSel 32 bit, PowerPC 32bit, ARM 926EJ-S v5l (32bit, ABI/mixed-endian floats), SPARC 32bit, SH4
+ 
+Known issues:
+ 
+On ARM EABI platforms RRD::Editor and RRDTOOL only partially compatible if RRDTOOL compiled with ABI support instead of EABI (RRD::Editor can read RRDTOOL files, but not vice-versa)
  
 For more information on RRD::Editor portability testing, see L<http://www.glmonitoring.ie/rrdeditor/>.  If your platform is not listed, there is a good chance things will "just work" but double checking that RRDTOOL can read the C<native-double> format RRD files generated by RRD::Editor, and vice-versa, would be a good idea if that's important to you.
  
@@ -2152,7 +2160,7 @@ L<rrdtool.pl|http://cpansearch.perl.org/src/DOUGLEITH/RRD-Editor-0.02/scripts/rr
  
 =head1 VERSION
  
-Ver 0.06
+Ver 0.07
  
 =head1 AUTHOR
  
