@@ -25,8 +25,8 @@ ok(join(" ",$rrd->lastupdate()) eq "67 1.0 789 2", 'lastupdate():'.join(" ",$rrd
 ok(join(" ",$rrd->DS_names()) eq "el1 el2 el3 el4", "DS_names():".join(" ",$rrd->DS_names()));
 ok($rrd->DS_heartbeat("el1") == 600, "DS_heartbeat():".$rrd->DS_heartbeat("el1")); 
 ok($rrd->DS_type("el1") eq "COUNTER", "DS_type():".$rrd->DS_type("el1"));
-ok(lc($rrd->DS_min("el1")) =~ m/nan/, "DS_min():".$rrd->DS_min("el1"));
-ok(lc($rrd->DS_max("el1")) =~ m/nan/, "DS_max():".$rrd->DS_max("el1"));
+my $x=$rrd->DS_min("el1");ok(RRD::Editor::_isNan($x), "DS_min():$x");
+$x=$rrd->DS_max("el1"); ok(RRD::Editor::_isNan($x), "DS_max():$x");
 ok($rrd->RRA_numrows(0) == 5, "RRA_numrows():".$rrd->RRA_numrows(0));
 ok($rrd->RRA_xff(0) == 0.5, "RRA_xff():".$rrd->RRA_xff(0));
 ok($rrd->RRA_step(0) == 300, "RRA_step():".$rrd->RRA_step(0));

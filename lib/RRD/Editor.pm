@@ -6,7 +6,7 @@
 
 package RRD::Editor;
 
-use 5.8.0;  # nan doesn't seem to be supported properly by perl before this
+use 5.8.8;  # nan doesn't seem to be supported properly by perl before this
 use strict;
 use warnings;
 
@@ -20,7 +20,7 @@ use Config;
 
 use vars qw($VERSION @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = '0.08';
+$VERSION = '0.08_1';
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
@@ -111,46 +111,48 @@ our $PACK_LITTLE_ENDIAN_SUPPORT = (length($@)>0 ? 0 : 1);
 
 # Define NaN, Inf, -Inf.  Not as easy as it sounds - usually "nan", "inf", "-inf" works, but not always e.g. on older versions of perl, on SH4 etc
 sub _isNan {
-    return $_[0] eq 0+"nan" # this is hack for some SH4 machines - it should fail according to IEEE 754
-            || $_[0] != $_[0]; # NaN is the only quantity that does not equal itself
+    return $_[0] eq "nan" || $_[0] != $_[0]; # NaN is the only quantity that does not equal itself
 }
 sub _isInf {
     return $_[0] > 0 && ($_[0]*10 == $_[0]); # Inf remains equal to itself after arithmetic
 }
 sub _NaN {
-    my $nan = 0+"nan";     
-    if (_isNan($nan)) {
-        return $nan;
-    } else {
-        # using 'nan' didn't work.  try using the IEEE 754 NaN bit pattern
-        if (ENDIAN eq "little") {
-            return unpack("d", scalar reverse pack "H*", "7FF8000000000000");# little endian
-        } elsif (ENDIAN eq "big") {
-            return unpack("d", scalar pack "H*", "7FF8000000000000"); # big endian
-        } elsif (ENDIAN eq "mixed") {
-            return unpack("d", scalar pack "H*", "000000007FF80000"); # mixed endian (used by some ARM processors)
-        } else {
-            warn("Warning: Looks like you have no NaN support.  Might have problems reading rrd files.");
-            return 0;
-        }
-    }
+    # try using the IEEE 754 NaN bit pattern
+    my $nan;
+    if (ENDIAN eq "little") {
+        $nan= unpack("d", scalar reverse pack "H*", "7FF8000000000000");# little endian
+        if (_isNan($nan)) { return $nan;}
+    } elsif (ENDIAN eq "big") {
+        $nan= unpack("d", scalar pack "H*", "7FF8000000000000"); # big endian
+        if (_isNan($nan)) { return $nan;}
+    } elsif (ENDIAN eq "mixed") {
+        $nan= unpack("d", scalar pack "H*", "000000007FF80000"); # mixed endian (used by some ARM processors)
+        if (_isNan($nan)) { return $nan;}
+    } 
+    # last ditch attempt. try perl "nan" string.  Doesn't work on all OS's since its relies on the interpretation made by a native C library call
+    $nan = 0+"nan";
+    if (_isNan($nan)) {return $nan;}
+    warn("Warning: Looks like you have no NaN support.  Might have problems reading rrd files.");
+    return 0;
 }
 sub _Inf {
-    my $inf = 0+"inf";     
-    if (_isInf($inf)) {
-        return $inf;
-    } else {
-        # using 'inf' didn't work.  try using the IEEE 754 NaN bit pattern
-        if (ENDIAN eq "little") {
-            return unpack("d", scalar reverse pack "H*", "7FF0000000000000");# little endian
-        } elsif (ENDIAN eq "big") {
-            return unpack("d", scalar pack "H*", "7FF0000000000000"); # big endian
-        } elsif (ENDIAN eq "mixed") {
-            return unpack("d", scalar pack "H*", "000000007FF00000"); # mixed endian (used by some ARM processors)
-        } else {
-            return 0;
-        }
-    }
+    # try using the IEEE 754 Inf bit pattern
+    my $inf;
+    if (ENDIAN eq "little") {
+        $inf= unpack("d", scalar reverse pack "H*", "7FF0000000000000");# little endian
+        if (_isInf($inf)) {return $inf;}
+    } elsif (ENDIAN eq "big") {
+        $inf= unpack("d", scalar pack "H*", "7FF0000000000000"); # big endian
+        if (_isInf($inf)) {return $inf;}
+    } elsif (ENDIAN eq "mixed") {
+        $inf= unpack("d", scalar pack "H*", "000000007FF00000"); # mixed endian (used by some ARM processors)
+        if (_isInf($inf)) {return $inf;}
+    } 
+    # didn't work.
+    $inf = 0+"inf"; 
+    if (_isInf($inf)) {return $inf;}
+    warn("Warning: Looks like you have no Inf support.  Might have problems reading rrd files.");
+    return 1;
 }
 use constant NAN => _NaN(); 
 use constant INF => _Inf(); 
@@ -2218,7 +2220,7 @@ L<rrdtool.pl|http://cpansearch.perl.org/src/DOUGLEITH/RRD-Editor-0.02/scripts/rr
  
 =head1 VERSION
  
-Ver 0.08
+Ver 0.08_1
  
 =head1 AUTHOR
  
