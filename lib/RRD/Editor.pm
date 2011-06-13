@@ -20,7 +20,7 @@ use Config;
 
 use vars qw($VERSION @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = '0.08_1';
+$VERSION = '0.08_2';
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
@@ -154,6 +154,35 @@ sub _Inf {
     warn("Warning: Looks like you have no Inf support.  Might have problems reading rrd files.");
     return 1;
 }
+sub _strfloat {
+    # convert a float to a string in a standard way i.e. removing cross-platform variation in strings displayed for nan and inf
+    if (_isNan($_[0])) {
+        return "nan";
+    } elsif (_isInf($_[0])) {
+        return "inf" ;
+    } elsif (_isInf(-$_[0])) {
+        return "-inf" ;
+    } else {
+        my $digits=10;
+        if ($_[1]) {$digits=$_[1];}
+        my $str=sprintf  "%0.".$digits."e",$_[0];
+        if ($str =~ m/^([+|-]?\d*[.]?\d*e[+|-]?)0(\d\d)$/) {$str=$1.$2; } # for windows - convert 3 digit exponent to 2 digits
+        return $str;
+    }
+}
+sub _strint {
+    # convert an integer to a string in a standard way i.e. removing cross-platform variation in strings displayed for nan and inf
+    if (_isNan($_[0])) {
+        return "nan";
+    } elsif (_isInf($_[0])) {
+        return "inf" ;
+    } elsif (_isInf(-$_[0])) {
+        return "-inf" ;
+    } else {
+        return sprintf "%d",$_[0];
+    }
+}
+
 use constant NAN => _NaN(); 
 use constant INF => _Inf(); 
 
@@ -1287,14 +1316,14 @@ sub fetch {
     }
     $out.=sprintf "%s", "\n";
     my $t = $rrd->{last_up} - $rrd->{last_up}%($rrd->{rra}[$chosen_rra]->{pdp_cnt}*$rrd->{pdp_step}) -($rrd->{rra}[$chosen_rra]->{row_cnt}-1)*$rrd->{rra}[$chosen_rra]->{pdp_cnt}*$rrd->{pdp_step};
-    my $jj; my $j;
+    my $jj; my $j; 
     for ($j=0; $j<$rrd->{rra}[$chosen_rra]->{row_cnt}; $j++) {
         if ($t > $start && $t <= $end+$step) {
             $out.=sprintf "%10u: ",$t;
             $jj= ($rrd->{rra}[$chosen_rra]->{ptr}+1 + $j)%$rrd->{rra}[$chosen_rra]->{row_cnt};
             @line=_unpackd($self,$rrd->{rra}[$chosen_rra]->{data}[$jj]);
             for ($i=0; $i<$rrd->{ds_cnt}; $i++) {
-                    $out.=sprintf "%-16.".$digits."e ", $line[$i];
+                $out.=sprintf "%-17s",_strfloat($line[$i],$digits);
             }
             $out.=sprintf "%s", "\n";
         }
@@ -1337,13 +1366,10 @@ sub info {
         $out.=sprintf "%s", "$str.index = ".$i."\n";
         $out.=sprintf "%s", "$str.type = \"".$rrd->{ds}[$i]->{type}."\"\n";
         $out.=sprintf "%s", "$str.minimal_heartbeat = ".$rrd->{ds}[$i]->{hb}."\n";
-        my $min= _isNan($rrd->{ds}[$i]->{min}) ? "nan" : $rrd->{ds}[$i]->{min};
-        my $max= _isNan($rrd->{ds}[$i]->{max}) ? "nan" : $rrd->{ds}[$i]->{max};
-        my $val= _isNan($rrd->{ds}[$i]->{pdp_prep}->{val}) ? "nan" : sprintf  "%0.".$digits."e",$rrd->{ds}[$i]->{pdp_prep}->{val};
-        $out.=sprintf "%s", "$str.min = ".$min."\n";
-        $out.=sprintf "%s", "$str.max = ".$max."\n";
+        $out.=sprintf "%s.min = %s\n",$str,_strint($rrd->{ds}[$i]->{min});
+        $out.=sprintf "%s.max = %s\n",$str,_strint($rrd->{ds}[$i]->{max});
         $out.=sprintf "%s", "$str.last_ds = \"".$rrd->{ds}[$i]->{pdp_prep}->{last_ds}."\"\n";
-        $out.=sprintf "$str.value = ".$val."\n";
+        $out.=sprintf "%s.value = %s\n",$str,_strfloat($rrd->{ds}[$i]->{pdp_prep}->{val}, $digits);
         $out.=sprintf "%s", "$str.unknown_sec = ".$rrd->{ds}[$i]->{pdp_prep}->{unkn_sec_cnt}."\n";
     }
     for ($i=0; $i<$rrd->{rra_cnt}; $i++) {
@@ -1352,10 +1378,9 @@ sub info {
         $out.=sprintf "%s", "$str.rows = ".$rrd->{rra}[$i]->{row_cnt}."\n";
         $out.=sprintf "%s", "$str.cur_row = ".$rrd->{rra}[$i]->{ptr}."\n";
         $out.=sprintf "%s", "$str.pdp_per_row = ".$rrd->{rra}[$i]->{pdp_cnt}."\n";
-        $out.=sprintf "$str.xff = %0.".$digits."e\n",$rrd->{rra}[$i]->{xff};
+        $out.=sprintf "%s.xff = %s\n",$str,_strfloat($rrd->{rra}[$i]->{xff},$digits);
         for ($ii=0; $ii<$rrd->{ds_cnt}; $ii++) {
-             my $val= _isNan($rrd->{rra}[$i]->{cdp_prep}[$ii]->[VAL]) ? "nan" : sprintf  "%0.".$digits."e",$rrd->{rra}[$i]->{cdp_prep}[$ii]->[VAL];
-            $out.=sprintf "$str.cdp_prep[$ii].value = ".$val."\n";
+            $out.=sprintf "%s.cdp_prep[$ii].value = %s\n",$str,_strfloat($rrd->{rra}[$i]->{cdp_prep}[$ii]->[VAL],$digits);
             $out.=sprintf "%s", "$str.cdp_prep[$ii].unknown_datapoints = ".$rrd->{rra}[$i]->{cdp_prep}[$ii]->[UNKN_PDP_CNT]."\n";
         }
     }
@@ -1395,12 +1420,9 @@ sub dump {
         $out.=sprintf "%s", "\n\t<ds>\n\t\t<name>".$rrd->{ds}[$i]->{name}."</name>\n\t\t";
         $out.=sprintf "%s", "<type>".$rrd->{ds}[$i]->{type}."</type>\n\t\t";
         $out.=sprintf "%s", "<minimal_heartbeat>".$rrd->{ds}[$i]->{hb}."</minimal_heartbeat>\n\t\t";
-        my $min= _isNan($rrd->{ds}[$i]->{min}) ? "nan" : $rrd->{ds}[$i]->{min};
-        my $max= _isNan($rrd->{ds}[$i]->{max}) ? "nan" : $rrd->{ds}[$i]->{max};
-        my $val= _isNan($rrd->{ds}[$i]->{pdp_prep}->{val}) ? "nan" : sprintf  "%0.".$digits."e",$rrd->{ds}[$i]->{pdp_prep}->{val};
-        $out.=sprintf "%s", "<min>".$min."</min>\n\t\t<max>".$max."</max>\n\t\t";
+        $out.=sprintf "<min>%s</min>\n\t\t<max>%s</max>\n\t\t",_strint($rrd->{ds}[$i]->{min}),_strint($rrd->{ds}[$i]->{max});
         $out.=sprintf "%s", "\n\t\t<!-- PDP Status -->\n\t\t<last_ds>".$rrd->{ds}[$i]->{pdp_prep}->{last_ds}."</last_ds>\n\t\t";
-        $out.=sprintf "<value>".$val."</value>\n\t\t";
+        $out.=sprintf "<value>%s</value>\n\t\t",_strfloat($rrd->{ds}[$i]->{pdp_prep}->{val},$digits);
         $out.=sprintf "%s", "<unknown_sec>".$rrd->{ds}[$i]->{pdp_prep}->{unkn_sec_cnt}."</unknown_sec>\n\t";
         $out.=sprintf "%s", "</ds>\n";
     }
@@ -1409,13 +1431,12 @@ sub dump {
         $out.=sprintf "%s", "\t<rra>\n\t\t";
         $out.=sprintf "%s", "<cf>".$rrd->{rra}[$i]->{name}."</cf>\n\t\t";
         $out.=sprintf "%s", "<pdp_per_row>".$rrd->{rra}[$i]->{pdp_cnt}."</pdp_per_row> <!-- ".$rrd->{rra}[$i]->{pdp_cnt}*$rrd->{pdp_step}." seconds -->\n\n\t\t";
-        $out.=sprintf "<params>\n\t\t<xff>%0.".$digits."e</xff>\n\t\t</params>\n\t\t",$rrd->{rra}[$i]->{xff};
+        $out.=sprintf "<params>\n\t\t<xff>%s</xff>\n\t\t</params>\n\t\t",_strfloat($rrd->{rra}[$i]->{xff},$digits);
         $out.=sprintf "%s", "<cdp_prep>\n\t\t";
         for ($ii=0; $ii<$rrd->{ds_cnt}; $ii++) {
-            $out.=sprintf "\t<ds>\n\t\t\t<primary_value>%0.".$digits."e</primary_value>\n\t\t\t", $rrd->{rra}[$i]->{cdp_prep}[$ii]->[PRIMARY_VAL];
-            $out.=sprintf "<secondary_value>%0.".$digits."e</secondary_value>\n\t\t\t", $rrd->{rra}[$i]->{cdp_prep}[$ii]->[SECONDARY_VAL];
-            $val= _isNan($rrd->{rra}[$i]->{cdp_prep}[$ii]->[VAL]) ? "nan" : sprintf  "%0.".$digits."e",$rrd->{rra}[$i]->{cdp_prep}[$ii]->[VAL];
-			$out.=sprintf "<value>".$val."</value>\n\t\t\t";
+            $out.=sprintf "\t<ds>\n\t\t\t<primary_value>%s</primary_value>\n\t\t\t", _strfloat($rrd->{rra}[$i]->{cdp_prep}[$ii]->[PRIMARY_VAL],$digits);
+            $out.=sprintf "<secondary_value>%s</secondary_value>\n\t\t\t", _strfloat($rrd->{rra}[$i]->{cdp_prep}[$ii]->[SECONDARY_VAL],$digits);
+			$out.=sprintf "<value>%s</value>\n\t\t\t",_strfloat($rrd->{rra}[$i]->{cdp_prep}[$ii]->[VAL],$digits);
 			$out.=sprintf "%s", "<unknown_datapoints>". $rrd->{rra}[$i]->{cdp_prep}[$ii]->[UNKN_PDP_CNT]."</unknown_datapoints>\n\t\t\t";            
             $out.=sprintf "%s", "</ds>\n\t\t";        
         }
@@ -1428,8 +1449,7 @@ sub dump {
                 $out.="<row>"; 
                 @line=_unpackd($self,$rrd->{rra}[$i]->{data}[$jj]);
                 for ($ii=0; $ii<$rrd->{ds_cnt}; $ii++) {
-                    $val= _isNan($line[$ii]) ? "nan" : sprintf  "%0.".$digits."e",$line[$ii];
-                    $out.=sprintf "<v>".$val."</v>";
+                    $out.=sprintf "<v>%s</v>",_strfloat($line[$ii],$digits);
                 }
                 $out.=sprintf "%s", "</row>\n\t\t";
                 $t+=$rrd->{rra}[$i]->{pdp_cnt}*$rrd->{pdp_step};
@@ -2220,7 +2240,7 @@ L<rrdtool.pl|http://cpansearch.perl.org/src/DOUGLEITH/RRD-Editor-0.02/scripts/rr
  
 =head1 VERSION
  
-Ver 0.08_1
+Ver 0.08_2
  
 =head1 AUTHOR
  
