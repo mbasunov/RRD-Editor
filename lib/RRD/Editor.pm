@@ -20,7 +20,7 @@ use Config;
 
 use vars qw($VERSION @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = '0.08_2';
+$VERSION = '0.09';
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
@@ -2240,7 +2240,7 @@ L<rrdtool.pl|http://cpansearch.perl.org/src/DOUGLEITH/RRD-Editor-0.02/scripts/rr
  
 =head1 VERSION
  
-Ver 0.08_2
+Ver 0.09
  
 =head1 AUTHOR
  
