@@ -20,7 +20,7 @@ use Config;
 
 use vars qw($VERSION @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = '0.09';
+$VERSION = '0.10_1';
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
@@ -421,7 +421,7 @@ sub _sizes {
         $self->{LONG_EL_SIZE} = PORTABLE_LONG_EL_SIZE;
         $self->{FLOAT_EL_SIZE}= PORTABLE_SINGLE_EL_SIZE; # 32 bits
         my @cookie=(SINGLE_FLOATCOOKIE);
-        $self->{COOKIE} = _packd($self,\@cookie,"portable-single");
+        $self->{COOKIE} = $self->_packd(\@cookie,"portable-single");
     } elsif ($self->{encoding} eq "littleendian-double" ||  $self->{encoding} eq "portable-double" || $self->{encoding} eq "ieee-64") {   
         $self->{LONG_EL_SIZE} = PORTABLE_LONG_EL_SIZE;
         $self->{FLOAT_EL_SIZE}= PORTABLE_DOUBLE_EL_SIZE; # 64 bits
@@ -453,7 +453,7 @@ sub _extractDSdefs {
         my $ds={}; 
         #($ds->{name}, $ds->{type}, $ds->{hb}, $ds->{min}, $ds->{max})= unpack("Z20 Z20 $L x".DIFF_SIZE." d d",substr(${$header},$idx,DS_EL_SIZE));
         ($ds->{name}, $ds->{type}, $ds->{hb})= unpack("Z20 Z20 $L",substr(${$header},$idx,40+$self->{LONG_EL_SIZE}));
-        ($ds->{min}, $ds->{max})= _unpackd($self,substr(${$header},$idx+40+$self->{FLOAT_EL_SIZE},2*$self->{FLOAT_EL_SIZE}));
+        ($ds->{min}, $ds->{max})= $self->_unpackd(substr(${$header},$idx+40+$self->{FLOAT_EL_SIZE},2*$self->{FLOAT_EL_SIZE}));
         $rrd->{ds}[$i] = $ds;
         $idx+=$self->{DS_EL_SIZE};
         #print $ds->{name}," ",$ds->{type}," ",$ds->{hb}," ",$ds->{min}," ",$ds->{max},"\n";
@@ -471,7 +471,7 @@ sub _extractRRAdefs {
     for ($i=0; $i<$rrd->{rra_cnt}; $i++) {
         my $rra={}; 
         ($rra->{name}, $rra->{row_cnt}, $rra->{pdp_cnt})= unpack("Z".(20+$self->{RRA_DEL_PAD})." $L $L",substr(${$header},$idx,20+$self->{RRA_DEL_PAD}+2*$self->{LONG_EL_SIZE}));
-        ($rra->{xff})= _unpackd($self,substr(${$header},$idx+20+$self->{RRA_DEL_PAD} + 2*$self->{LONG_EL_SIZE}+$self->{RRA_PAD}, $self->{FLOAT_EL_SIZE}));
+        ($rra->{xff})= $self->_unpackd(substr(${$header},$idx+20+$self->{RRA_DEL_PAD} + 2*$self->{LONG_EL_SIZE}+$self->{RRA_PAD}, $self->{FLOAT_EL_SIZE}));
         $rrd->{rra}[$i] = $rra;
         $idx+=$self->{RRA_DEF_EL_SIZE};
         #print $rra->{name}," ",$rra->{row_cnt}," ",$rra->{pdp_cnt}," ",$rra->{xff},"\n";
@@ -489,7 +489,7 @@ sub _extractPDPprep {
     for ($i=0; $i<$rrd->{ds_cnt}; $i++) {
         my $pdp={}; 
         ($pdp->{last_ds}, $pdp->{unkn_sec_cnt})= unpack("Z".(30+$self->{PDP_PREP_PAD})." $L",substr(${$header},$idx,30+$self->{PDP_PREP_PAD}+$self->{LONG_EL_SIZE})); # NB Z32 instead of Z30 due to byte alignment
-        ($pdp->{val})= _unpackd($self,substr(${$header},$idx+30+$self->{PDP_PREP_PAD}+$self->{FLOAT_EL_SIZE},$self->{FLOAT_EL_SIZE})); 
+        ($pdp->{val})= $self->_unpackd(substr(${$header},$idx+30+$self->{PDP_PREP_PAD}+$self->{FLOAT_EL_SIZE},$self->{FLOAT_EL_SIZE})); 
         $rrd->{ds}[$i]->{pdp_prep} = $pdp;
         $idx+=$self->{PDP_PREP_EL_SIZE};
         #print $pdp->{last_ds}," ",$pdp->{unkn_sec_cnt}," ",$pdp->{val},"\n";
@@ -515,11 +515,11 @@ sub _extractCDPprep {
                 $idx+=$self->{CDP_PREP_EL_SIZE};
             } else {
                 @{$self->{rrd}->{rra}[$ii]->{cdp_prep}[$i]}=(0,0,0,0,0,0,0,0,0,0); # pre-allocate array
-                (@{$self->{rrd}->{rra}[$ii]->{cdp_prep}[$i]}[0])=_unpackd($self,substr(${$header},$idx,$self->{FLOAT_EL_SIZE})); $idx+=$self->{FLOAT_EL_SIZE};
+                (@{$self->{rrd}->{rra}[$ii]->{cdp_prep}[$i]}[0])=$self->_unpackd(substr(${$header},$idx,$self->{FLOAT_EL_SIZE})); $idx+=$self->{FLOAT_EL_SIZE};
                 @{$self->{rrd}->{rra}[$ii]->{cdp_prep}[$i]}[1]=unpack("$L x".$self->{DIFF_SIZE},substr(${$header},$idx,$self->{FLOAT_EL_SIZE})); $idx+=$self->{FLOAT_EL_SIZE};
-                @{$self->{rrd}->{rra}[$ii]->{cdp_prep}[$i]}[2..5]=_unpackd($self,substr(${$header},$idx,4*$self->{FLOAT_EL_SIZE})); $idx+=4*$self->{FLOAT_EL_SIZE};
+                @{$self->{rrd}->{rra}[$ii]->{cdp_prep}[$i]}[2..5]=$self->_unpackd(substr(${$header},$idx,4*$self->{FLOAT_EL_SIZE})); $idx+=4*$self->{FLOAT_EL_SIZE};
                 @{$self->{rrd}->{rra}[$ii]->{cdp_prep}[$i]}[6..7]=unpack("$L x".$self->{DIFF_SIZE}." $L x".$self->{DIFF_SIZE},substr(${$header},$idx,2*$self->{FLOAT_EL_SIZE})); $idx+=2*$self->{FLOAT_EL_SIZE};
-                @{$self->{rrd}->{rra}[$ii]->{cdp_prep}[$i]}[8..9]=_unpackd($self,substr(${$header},$idx,2*$self->{FLOAT_EL_SIZE})); $idx+=2*$self->{FLOAT_EL_SIZE};
+                @{$self->{rrd}->{rra}[$ii]->{cdp_prep}[$i]}[8..9]=$self->_unpackd(substr(${$header},$idx,2*$self->{FLOAT_EL_SIZE})); $idx+=2*$self->{FLOAT_EL_SIZE};
             }
         }
     }
@@ -547,7 +547,7 @@ sub _loadRRAdata {
     if (!defined($self->{fd})) {croak("loadRRDdata: must call open() first\n");}
 
     my $data; my $ds_cnt=$self->{FLOAT_EL_SIZE} * $rrd->{ds_cnt};
-    seek $self->{fd},_get_header_size($self),0; # move to start of RRA data within file
+    seek $self->{fd},$self->_get_header_size,0; # move to start of RRA data within file
     for (my $ii=0; $ii<$rrd->{rra_cnt}; $ii++) {
         my $idx=0; 
         read($self->{fd}, $data, $self->{FLOAT_EL_SIZE} * $rrd->{ds_cnt}* $rrd->{rra}[$ii]->{row_cnt} );
@@ -645,15 +645,15 @@ sub RRA_el {
     my ($self, $rraidx, $ds_name, $tidx) = @_;  my $rrd=$self->{rrd};
     
     if ($rraidx > $rrd->{rra_cnt} || $rraidx<0) {croak("RRA index out of range\n");}
-    my $dsidx=_findDSidx($self,$ds_name);
+    my $dsidx=$self->_findDSidx($ds_name);
     if ($tidx >= $rrd->{rra}[$rraidx]->{row_cnt} || $tidx<0) {croak("Row index out of range\n");}
 
     # load RRA data, if not already loaded
-    if (!defined($rrd->{dataloaded})) {_loadRRAdata($self);}
+    if (!defined($rrd->{dataloaded})) {$self->_loadRRAdata;}
 
     my  $t = $rrd->{last_up} - $rrd->{last_up}%($rrd->{rra}[$rraidx]->{pdp_cnt}*$rrd->{pdp_step}) -($rrd->{rra}[$rraidx]->{row_cnt}-1-$tidx)*$rrd->{rra}[$rraidx]->{pdp_cnt}*$rrd->{pdp_step};
     my $jj= ($rrd->{rra}[$rraidx]->{ptr}+1+ $tidx)%$rrd->{rra}[$rraidx]->{row_cnt};
-    my @line=_unpackd($self,$rrd->{rra}[$rraidx]->{data}[$jj]);
+    my @line=$self->_unpackd($rrd->{rra}[$rraidx]->{data}[$jj]);
     return ($t, $line[$dsidx]);
 }
 
@@ -662,15 +662,15 @@ sub set_RRA_el {
     # given the index number of the RRA, the index of the DS and the row within the RRA (oldest row is 0),
     # updates the data value to be $val
     my ($self, $rraidx, $ds_name, $tidx, $val) = @_;  my $rrd=$self->{rrd};
-    my $dsidx=_findDSidx($self,$ds_name);
+    my $dsidx=$self->_findDSidx($ds_name);
     
     # load RRA data, if not already loaded
-    if (!defined($rrd->{dataloaded})) {_loadRRAdata($self);}
+    if (!defined($rrd->{dataloaded})) {$self->_loadRRAdata;}
 
     my $jj= ($rrd->{rra}[$rraidx]->{ptr}+1 + $tidx)%$rrd->{rra}[$rraidx]->{row_cnt};
-    my @line=_unpackd($self,$rrd->{rra}[$rraidx]->{data}[$jj]);
+    my @line=$self->_unpackd($rrd->{rra}[$rraidx]->{data}[$jj]);
     $line[$dsidx] = $val;
-    $rrd->{rra}[$rraidx]->{data}[$jj]=_packd($self,\@line);
+    $rrd->{rra}[$rraidx]->{data}[$jj]=$self->_packd(\@line);
 }
 
 sub last {
@@ -705,7 +705,7 @@ sub DS_heartbeat {
     # return heartbeat for DS
     my ($self, $name) = @_;  my $rrd=$self->{rrd};
     
-    my $idx=_findDSidx($self,$name); if ($idx<0) {croak("Unknown source\n");}
+    my $idx=$self->_findDSidx($name); if ($idx<0) {croak("Unknown source\n");}
     return $rrd->{ds}[$idx]->{hb};
 }
 
@@ -715,7 +715,7 @@ sub set_DS_heartbeat {
     
     if ($hb < $rrd->{pdp_step}) {croak("Heartbeat value must be at least the minimum step size ".$rrd->{pdp_step}." secs\n");}
     
-    my $idx=_findDSidx($self,$name); if ($idx<0) {croak("Unknown source\n");}
+    my $idx=$self->_findDSidx($name); if ($idx<0) {croak("Unknown source\n");}
     # update to new value
     $rrd->{ds}[$idx]->{hb}=$hb;
     return 1;
@@ -725,7 +725,7 @@ sub DS_min {
     # return min value for DS
     my ($self, $name) = @_;  my $rrd=$self->{rrd};
     
-    my $idx=_findDSidx($self,$name); if ($idx<0) {croak("Unknown source\n");}
+    my $idx=$self->_findDSidx($name); if ($idx<0) {croak("Unknown source\n");}
     return $rrd->{ds}[$idx]->{min};
 }
 
@@ -733,7 +733,7 @@ sub set_DS_min {
     # change min value for DS
     my ($self, $name, $min) = @_;  my $rrd=$self->{rrd};
         
-    my $idx=_findDSidx($self,$name); if ($idx<0) {croak("Unknown source\n");}
+    my $idx=$self->_findDSidx($name); if ($idx<0) {croak("Unknown source\n");}
     # update to new value
     $rrd->{ds}[$idx]->{min}=$min;
     return 1;
@@ -743,7 +743,7 @@ sub DS_max {
     # return max value for DS
     my ($self, $name) = @_;  my $rrd=$self->{rrd};
     
-    my $idx=_findDSidx($self,$name); if ($idx<0) {croak("Unknown source\n");}
+    my $idx=$self->_findDSidx($name); if ($idx<0) {croak("Unknown source\n");}
     return $rrd->{ds}[$idx]->{max};
 }
 
@@ -751,7 +751,7 @@ sub set_DS_max {
     # change max value for DS
     my ($self, $name, $max) = @_;  my $rrd=$self->{rrd};
     
-    my $idx=_findDSidx($self,$name); if ($idx<0) {croak("Unknown source\n");}
+    my $idx=$self->_findDSidx($name); if ($idx<0) {croak("Unknown source\n");}
     # update to new value
     $rrd->{ds}[$idx]->{max}=$max;
     return 1;
@@ -769,7 +769,7 @@ sub set_DS_type {
     # change type of DS
     my ($self, $name, $type) = @_;  my $rrd=$self->{rrd};
     
-    my $idx=_findDSidx($self,$name); if ($idx<0) {croak("Unknown source\n");}
+    my $idx=$self->_findDSidx($name); if ($idx<0) {croak("Unknown source\n");}
     if ($type !~ m/(GAUGE|COUNTER|DERIVE|ABSOLUTE)/) { croak("Invalid DS type\n");}
     # update to new value
     $rrd->{ds}[$idx]->{type}=$type;
@@ -779,7 +779,7 @@ sub set_DS_type {
 sub rename_DS {
     my ($self, $old, $new) = @_;  my $rrd=$self->{rrd};
 
-    my $idx=_findDSidx($self,$old);  if ($idx<0) {croak("Unknown source\n");}
+    my $idx=$self->_findDSidx($old);  if ($idx<0) {croak("Unknown source\n");}
     $rrd->{ds}[$idx]->{name}=$new;
     return 1;
 }
@@ -791,7 +791,7 @@ sub add_DS {
     if ($arg !~ m/^DS:([a-zA-Z0-9_\-]+):(GAUGE|COUNTER|DERIVE|ABSOLUTE):([0-9]+):(U|[0-9\.]+):(U|[0-9\.]+)$/) { croak("Invalid DS spec\n");}
 
     # load RRA data, if not already loaded
-    if (!defined($rrd->{dataloaded})) {_loadRRAdata($self);}
+    if (!defined($rrd->{dataloaded})) {$self->_loadRRAdata;}
 
     # update DS definitions
     my $ds; 
@@ -812,9 +812,9 @@ sub add_DS {
     my @line; my $i;
     for ($ii=0; $ii<$rrd->{rra_cnt}; $ii++) {
         for ($i=0; $i<$rrd->{rra}[$ii]->{row_cnt}; $i++) {
-            @line=_unpackd($self,$rrd->{rra}[$ii]->{data}[$i]);
+            @line=$self->_unpackd($rrd->{rra}[$ii]->{data}[$i]);
             $line[$rrd->{ds_cnt}-1]=NAN;
-            $rrd->{rra}[$ii]->{data}[$i]=_packd($self,\@line);
+            $rrd->{rra}[$ii]->{data}[$i]=$self->_packd(\@line);
         }
     }
     return 1;
@@ -823,10 +823,10 @@ sub add_DS {
 sub delete_DS {
     # delete a DS
     my ($self, $name) = @_;  my $rrd=$self->{rrd};
-    my $idx=_findDSidx($self,$name);  if ($idx<0) {croak("Unknown source\n");}
+    my $idx=$self->_findDSidx($name);  if ($idx<0) {croak("Unknown source\n");}
 
     # load RRA data, if not already loaded
-    if (!defined($rrd->{dataloaded})) {_loadRRAdata($self);}
+    if (!defined($rrd->{dataloaded})) {$self->_loadRRAdata;}
 
     # update DS definitions
     my $i;
@@ -847,11 +847,11 @@ sub delete_DS {
     my $j; my @line;
     for ($ii=0; $ii<$rrd->{rra_cnt}; $ii++) {
         for ($i=0; $i<$rrd->{rra}[$ii]->{row_cnt}; $i++) {
-            @line=_unpackd($self,$rrd->{rra}[$ii]->{data}[$i]);
+            @line=$self->_unpackd($rrd->{rra}[$ii]->{data}[$i]);
             for ($j=$idx; $j<$rrd->{ds_cnt}; $j++) {
                 $line[$j]=$line[$j+1];
             }
-            $rrd->{rra}[$ii]->{data}[$i]=_packd($self,[@line[0..$rrd->{ds_cnt}-1]]);
+            $rrd->{rra}[$ii]->{data}[$i]=$self->_packd([@line[0..$rrd->{ds_cnt}-1]]);
         }
     }
     return 1;
@@ -862,7 +862,7 @@ sub add_RRA {
     my ($self, $args) = @_;  my $rrd=$self->{rrd};
     if ($args !~ m/^RRA:(AVERAGE|MAX|MIN|LAST):([0-9\.]+):([0-9]+):([0-9]+)$/) {croak("Invalid RRA spec\n");}
     # load RRA data, if not already loaded
-    if (!defined($rrd->{dataloaded})) {_loadRRAdata($self);}
+    if (!defined($rrd->{dataloaded})) {$self->_loadRRAdata;}
     # update RRA definitions
     my $rra;
     if ($4<1) { croak("Invalid row count $4\n");}
@@ -880,7 +880,7 @@ sub add_RRA {
     # update data
     my @empty=((NAN)x$rrd->{ds_cnt});
     for ($i=0; $i<$rrd->{rra}[$idx]->{row_cnt}; $i++) {
-        $rrd->{rra}[$idx]->{data}[$i] = _packd($self,\@empty);
+        $rrd->{rra}[$idx]->{data}[$i] = $self->_packd(\@empty);
     }
     return 1;
 }
@@ -890,7 +890,7 @@ sub delete_RRA {
     my ($self, $idx) = @_;  my $rrd=$self->{rrd};
     if ($idx > $rrd->{rra_cnt} || $idx<0) {croak("RRA index out of range\n");}
     # load RRA data, if not already loaded
-    if (!defined($rrd->{dataloaded})) {_loadRRAdata($self);}
+    if (!defined($rrd->{dataloaded})) {$self->_loadRRAdata;}
     # update RRA 
     $rrd->{rra_cnt}--;
     for (my $i=$idx; $i<$rrd->{rra_cnt}; $i++) {
@@ -905,11 +905,11 @@ sub resize_RRA {
     if ($idx > $rrd->{rra_cnt} || $idx<0) {croak("RRA index out of range\n");}
     if ($size < 0) {$size=0;}
     # load RRA data, if not already loaded
-    if (!defined($rrd->{dataloaded})) {_loadRRAdata($self);}
+    if (!defined($rrd->{dataloaded})) {$self->_loadRRAdata;}
     # update data
     my @empty=((NAN)x$rrd->{ds_cnt});
     for (my $i=$rrd->{rra}[$idx]->{row_cnt}; $i<$size; $i++) {
-        $rrd->{rra}[$idx]->{data}[$i] = _packd($self,\@empty);
+        $rrd->{rra}[$idx]->{data}[$i] = $self->_packd(\@empty);
     }
     $rrd->{rra}[$idx]->{row_cnt} = $size;
     return 1;
@@ -944,6 +944,8 @@ sub update {
     } else {
         if (defined($self->{fd})) {
             $inplace="file"; # data is not loaded yet, so carry out update in place in file.  more efficient - no need to call save() to write data to disk.
+            open $self->{fd}, "+<", $self->{file_name} or croak "Couldn't open file ".$self->{file_name}.": $!\n"; # reopen file in update mode ($self->open() opens in read-only mode)
+            binmode($self->{fd});
             $fd=$self->{fd};
         } else {
             croak("update: must call open() or create() first\n");
@@ -954,7 +956,7 @@ sub update {
     my $i; my $j;
     my @tmp=split(/:/,$template); my @idx=(0 .. $rrd->{ds_cnt}-1);
     for ($i=0; $i<@tmp; $i++) {
-        $idx[$i]=findDSidx($self,$tmp[$i]); if($idx[$i]<0) {croak("Unknown DS name ".$tmp[$i]."\n");}
+        $idx[$i]=$self->findDSidx($tmp[$i]); if($idx[$i]<0) {croak("Unknown DS name ".$tmp[$i]."\n");}
     }
     # Parse update strings - updates the primary data points (PDPs)
     # and consolidated data points (CDPs), and writes changes to the RRAs.
@@ -1091,7 +1093,7 @@ sub update {
             # update_all_cdp_prep. Iterate over all the RRAs for a given DS and update the CDP
             my $current_cf; my $start_pdp_offset; my @rra_step_cnt;
             my $cum_val; my $cur_val; my $pdp_into_cdp_cnt; my $ii;
-            my $idx=_get_header_size($self); # file position (used by in place updates)
+            my $idx=$self->_get_header_size; # file position (used by in place updates)
             for ($ii=0; $ii<$rrd->{rra_cnt}; $ii++) {
                 $start_pdp_offset = $rrd->{rra}[$ii]->{pdp_cnt} - $proc_pdp_cnt % $rrd->{rra}[$ii]->{pdp_cnt};
                 if ($start_pdp_offset <= $elapsed_pdp_st) {
@@ -1231,11 +1233,11 @@ sub update {
                         push(@line, $rrd->{rra}[$ii]->{cdp_prep}[$j]->[$scratch_idx]);
                     }
                     if ($inplace eq "memory") {
-                        $rrd->{rra}[$ii]->{data}[$rrd->{rra}[$ii]->{ptr}] = _packd($self,\@line);
+                        $rrd->{rra}[$ii]->{data}[$rrd->{rra}[$ii]->{ptr}] = $self->_packd(\@line);
                     } else {
                         # update in place
                         seek $fd,$idx+$rrd->{rra}[$ii]->{ptr}*$rrd->{ds_cnt}*$self->{FLOAT_EL_SIZE},0;
-                        print $fd _packd($self,\@line);
+                        print $fd $self->_packd(\@line);
                     }
                     # rrd_notify_row
                 }
@@ -1248,7 +1250,8 @@ sub update {
         # update header
         seek $fd,0,0;
         #print $fd $self->getheader();
-        _saveheader($self,$fd);
+        $self->_saveheader($fd);
+        close($fd); # flush to disk
     }
     return 1;
 }
@@ -1307,7 +1310,7 @@ sub fetch {
     $end += ($step - $end % $step);
 
     # load RRA data, if not already loaded
-    if (!defined($rrd->{dataloaded})) {_loadRRAdata($self);}
+    if (!defined($rrd->{dataloaded})) {$self->_loadRRAdata;}
 
     # output column headings
     $out.=sprintf "%12s"," ";
@@ -1321,7 +1324,7 @@ sub fetch {
         if ($t > $start && $t <= $end+$step) {
             $out.=sprintf "%10u: ",$t;
             $jj= ($rrd->{rra}[$chosen_rra]->{ptr}+1 + $j)%$rrd->{rra}[$chosen_rra]->{row_cnt};
-            @line=_unpackd($self,$rrd->{rra}[$chosen_rra]->{data}[$jj]);
+            @line=$self->_unpackd($rrd->{rra}[$chosen_rra]->{data}[$jj]);
             for ($i=0; $i<$rrd->{ds_cnt}; $i++) {
                 $out.=sprintf "%-17s",_strfloat($line[$i],$digits);
             }
@@ -1403,7 +1406,7 @@ sub dump {
     my $timecomments = $notimecomments>0 ? 0 : 1;
     
     # load RRA data, if not already loaded
-    if (!defined($rrd->{dataloaded})) {_loadRRAdata($self);}
+    if (!defined($rrd->{dataloaded})) {$self->_loadRRAdata;}
 
     my $out=''; my @line;
     
@@ -1447,7 +1450,7 @@ sub dump {
                 $jj= ($rrd->{rra}[$i]->{ptr}+1 + $j)%$rrd->{rra}[$i]->{row_cnt};
                 if ($timecomments) {$out.=sprintf "\t%s", "<!-- ".strftime("%Y-%m-%d %T %Z",localtime($t)). " / $t --> ";}
                 $out.="<row>"; 
-                @line=_unpackd($self,$rrd->{rra}[$i]->{data}[$jj]);
+                @line=$self->_unpackd($rrd->{rra}[$i]->{data}[$jj]);
                 for ($ii=0; $ii<$rrd->{ds_cnt}; $ii++) {
                     $out.=sprintf "<v>%s</v>",_strfloat($line[$ii],$digits);
                 }
@@ -1468,7 +1471,7 @@ sub _saveheader {
     my $fd=$_[1];
 
     my $L=$self->_packlongchar();
-    my $header="\0"x _get_header_size($self); # preallocate header
+    my $header="\0"x $self->_get_header_size; # preallocate header
     substr($header,0,9,"RRD\0".$self->{rrd}->{version});
     substr($header,$self->{OFFSET},$self->{FLOAT_EL_SIZE}+3*$self->{LONG_EL_SIZE}, $self->{COOKIE}.pack("$L $L $L",$self->{rrd}->{ds_cnt}, $self->{rrd}->{rra_cnt}, $self->{rrd}->{pdp_step}));
     # DS defs
@@ -1478,7 +1481,7 @@ sub _saveheader {
 		$self->{rrd}->{ds}[$i]->{name}, $self->{rrd}->{ds}[$i]->{type}, $self->{rrd}->{ds}[$i]->{hb}));
         $idx+=40+$self->{FLOAT_EL_SIZE};
         my @minmax=($self->{rrd}->{ds}[$i]->{min}, $self->{rrd}->{ds}[$i]->{max});
-        substr($header,$idx,2*$self->{FLOAT_EL_SIZE},_packd($self,\@minmax));
+        substr($header,$idx,2*$self->{FLOAT_EL_SIZE},$self->_packd(\@minmax));
         $idx+=9*$self->{FLOAT_EL_SIZE};
     }
     # RRA defs
@@ -1487,7 +1490,7 @@ sub _saveheader {
         substr($header,$idx,20+$self->{RRA_DEL_PAD}+2*$self->{LONG_EL_SIZE},pack("Z".(20+$self->{RRA_DEL_PAD})." $L $L",$self->{rrd}->{rra}[$i]->{name}, $self->{rrd}->{rra}[$i]->{row_cnt}, $self->{rrd}->{rra}[$i]->{pdp_cnt}));
         $idx+=20+$self->{RRA_DEL_PAD}+2*$self->{LONG_EL_SIZE};
         my @xff=($self->{rrd}->{rra}[$i]->{xff});
-        substr($header,$idx+$self->{RRA_PAD},$self->{FLOAT_EL_SIZE},_packd($self,\@xff));
+        substr($header,$idx+$self->{RRA_PAD},$self->{FLOAT_EL_SIZE},$self->_packd(\@xff));
         $idx += $self->{FLOAT_EL_SIZE}*10+$self->{RRA_PAD};
     }
     # live header
@@ -1499,7 +1502,7 @@ sub _saveheader {
           pack("Z".(30+$self->{PDP_PREP_PAD})." $L x".$self->{DIFF_SIZE},$self->{rrd}->{ds}[$i]->{pdp_prep}->{last_ds}, $self->{rrd}->{ds}[$i]->{pdp_prep}->{unkn_sec_cnt}));
         $idx+=30+$self->{PDP_PREP_PAD}+$self->{FLOAT_EL_SIZE};
         my @val=($self->{rrd}->{ds}[$i]->{pdp_prep}->{val});
-        substr($header,$idx,$self->{FLOAT_EL_SIZE},_packd($self,\@val));
+        substr($header,$idx,$self->{FLOAT_EL_SIZE},$self->_packd(\@val));
         $idx+= $self->{FLOAT_EL_SIZE}*9;
     }
     # CDP_PREP
@@ -1514,15 +1517,15 @@ sub _saveheader {
                 substr($header,$idx,$self->{CDP_PREP_EL_SIZE}, pack("f $L x".$self->{DIFF_SIZE}." f f f f $L x".$self->{DIFF_SIZE}." $L x".$self->{DIFF_SIZE}." f f",@{$self->{rrd}->{rra}[$ii]->{cdp_prep}[$i]}));
                 $idx+=$self->{CDP_PREP_EL_SIZE};
             } else {
-                substr($header,$idx,$self->{FLOAT_EL_SIZE},_packd($self,[@{$self->{rrd}->{rra}[$ii]->{cdp_prep}[$i]}[0]]));
+                substr($header,$idx,$self->{FLOAT_EL_SIZE},$self->_packd([@{$self->{rrd}->{rra}[$ii]->{cdp_prep}[$i]}[0]]));
                 $idx+=$self->{FLOAT_EL_SIZE};
                 substr($header,$idx,$self->{FLOAT_EL_SIZE},pack("$L x".$self->{DIFF_SIZE},@{$self->{rrd}->{rra}[$ii]->{cdp_prep}[$i]}[1]));
                 $idx+=$self->{FLOAT_EL_SIZE};
-                substr($header,$idx,4*$self->{FLOAT_EL_SIZE},_packd($self,[@{$self->{rrd}->{rra}[$ii]->{cdp_prep}[$i]}[2..5]]));
+                substr($header,$idx,4*$self->{FLOAT_EL_SIZE},$self->_packd([@{$self->{rrd}->{rra}[$ii]->{cdp_prep}[$i]}[2..5]]));
                 $idx+=4*$self->{FLOAT_EL_SIZE};
                 substr($header,$idx,2*$self->{FLOAT_EL_SIZE},pack("$L x".$self->{DIFF_SIZE}." $L x".$self->{DIFF_SIZE},@{$self->{rrd}->{rra}[$ii]->{cdp_prep}[$i]}[6..7]));
                 $idx+=2*$self->{FLOAT_EL_SIZE};
-                substr($header,$idx,2*$self->{FLOAT_EL_SIZE},_packd($self,[@val=@{$self->{rrd}->{rra}[$ii]->{cdp_prep}[$i]}[8..9]]));
+                substr($header,$idx,2*$self->{FLOAT_EL_SIZE},$self->_packd([@val=@{$self->{rrd}->{rra}[$ii]->{cdp_prep}[$i]}[8..9]]));
                 $idx+=2*$self->{FLOAT_EL_SIZE};
             }
         }
@@ -1541,7 +1544,7 @@ sub save {
     my $self=$_[0]; 
     
     # load RRA data, if not already loaded
-    if (!defined($self->{rrd}->{dataloaded})) {_loadRRAdata($self);}
+    if (!defined($self->{rrd}->{dataloaded})) {$self->_loadRRAdata;}
     
     if (@_>1) {  
         # open file
@@ -1549,7 +1552,7 @@ sub save {
     } elsif (!defined($self->{file_name})) {
         croak("Must either supply a filename to use or have a file already opened e.g. via calling open()\n");
     }
-    open $self->{fd}, ">", $self->{file_name};
+    open $self->{fd}, "+<", $self->{file_name} or croak "Couldn't open file ".$self->{file_name}.": $!\n";
     binmode($self->{fd});
     my $fd=$self->{fd};
 
@@ -1561,11 +1564,11 @@ sub save {
         if ($encoding =~ m/^native-double$/) {$encoding=_native_double();}
         $self->{encoding}=$encoding;
     }
-    _sizes($self);
+    $self->_sizes;
 
     # output headers
     #print $fd $self->getheader();
-    _saveheader($self,$fd);
+    $self->_saveheader($fd);
 
     # output data
     my @line; my $i; my $ii;
@@ -1573,21 +1576,22 @@ sub save {
         for ($i=0; $i<$self->{rrd}->{rra}[$ii]->{row_cnt}; $i++) {
             if ($self->{encoding} ne $current_encoding) {
                 # need to convert binary data encoding
-                @line=_unpackd($self,$self->{rrd}->{rra}[$ii]->{data}[$i],$current_encoding);
-                $self->{rrd}->{rra}[$ii]->{data}[$i] = _packd($self,\@line);
+                @line=$self->_unpackd($self->{rrd}->{rra}[$ii]->{data}[$i],$current_encoding);
+                $self->{rrd}->{rra}[$ii]->{data}[$i] = $self->_packd(\@line);
             }
             print $fd $self->{rrd}->{rra}[$ii]->{data}[$i];
         }
     }    
     # done
-    #close($fd);   
+
+    # and exit
     return 1;
 }
 
 ####
 sub close {
     # close an open RRD file
-    my $self=$_[0];
+    my ($self) = @_;
     if (defined($self->{fd})) { close($self->{fd}); }
 }
 
@@ -1610,7 +1614,7 @@ sub create {
     if ($encoding !~ m/^(native-double|native-double-simple|native-double-mixed|portable-double|portable-single)$/) {croak("unknown format ".$encoding."\n");} 
     if ($encoding =~ m/^native-double$/) {$encoding=_native_double();}
     $self->{encoding}=$encoding;
-    _sizes($self);
+    $self->_sizes;
         
     $rrd->{version}="0003";
     $rrd->{ds_cnt}=0; $rrd->{rra_cnt}=0; $rrd->{pdp_step}=$pdp_step;    
@@ -1654,7 +1658,7 @@ sub create {
     my @empty=((NAN)x$rrd->{ds_cnt});
     for ($ii=0; $ii<$rrd->{rra_cnt}; $ii++) {
         for ($i=0; $i<$rrd->{rra}[$ii]->{row_cnt}; $i++) {
-            $rrd->{rra}[$ii]->{data}[$i]=_packd($self,\@empty);
+            $rrd->{rra}[$ii]->{data}[$i]=$self->_packd(\@empty);
         }
     }
     $rrd->{dataloaded}=1; # record the fact that the data is now loaded in memory
@@ -1666,7 +1670,7 @@ sub open {
     my $self = $_[0];  my $rrd=$self->{rrd}; 
     $self->{file_name}=$_[1]; 
     
-    open($self->{fd}, "+<", $self->{file_name}) or croak "Couldn't open file ".$self->{file_name}.": $!\n";
+    open($self->{fd}, "<", $self->{file_name}) or croak "Couldn't open file ".$self->{file_name}.": $!\n";
     binmode($self->{fd});
     my $file_len = -s $self->{file_name};
 
@@ -1686,18 +1690,18 @@ sub open {
     my $file_floatcookie_native_double_simple = sprintf("%0.6e", $t);
     ($x, $y, $t) =unpack("Z4 Z5 x![d] d",substr($staticheader,0,length($staticheader)));
     my $file_floatcookie_native_double_mixed = sprintf("%0.6e", $t);
-    ($t)=_unpackd($self,substr($staticheader,12,PORTABLE_SINGLE_EL_SIZE),"native-single");
+    ($t)=$self->_unpackd(substr($staticheader,12,PORTABLE_SINGLE_EL_SIZE),"native-single");
     my $file_floatcookie_native_single=sprintf("%0.6e",$t); 
-    ($t)=_unpackd($self,substr($staticheader,12,PORTABLE_SINGLE_EL_SIZE),"portable-single");
+    ($t)=$self->_unpackd(substr($staticheader,12,PORTABLE_SINGLE_EL_SIZE),"portable-single");
     my $file_floatcookie_portable_single=sprintf("%0.6e",$t); 
-    ($t)=_unpackd($self,substr($staticheader,12,PORTABLE_DOUBLE_EL_SIZE),"portable-double");
+    ($t)=$self->_unpackd(substr($staticheader,12,PORTABLE_DOUBLE_EL_SIZE),"portable-double");
     my $file_floatcookie_portable_double=sprintf("%0.6e",$t); 
     my $file_floatcookie_littleendian_single; 
     my $file_floatcookie_littleendian_double; 
     if ($PACK_LITTLE_ENDIAN_SUPPORT>0) {
-        ($t)=_unpackd($self,substr($staticheader,12,PORTABLE_SINGLE_EL_SIZE),"littleendian-single");
+        ($t)=$self->_unpackd(substr($staticheader,12,PORTABLE_SINGLE_EL_SIZE),"littleendian-single");
         $file_floatcookie_littleendian_single=sprintf("%0.6e",$t); 
-        ($t)=_unpackd($self,substr($staticheader,12,PORTABLE_DOUBLE_EL_SIZE),"littleendian-double");
+        ($t)=$self->_unpackd(substr($staticheader,12,PORTABLE_DOUBLE_EL_SIZE),"littleendian-double");
         $file_floatcookie_littleendian_double=sprintf("%0.6e",$t); 
     }
     my $cookie=sprintf("%0.6e",DOUBLE_FLOATCOOKIE);
@@ -1721,8 +1725,8 @@ sub open {
     }
     #print  $self->{encoding},"\n";
     #$self->{encoding} = "portable-double";
-    _sizes($self); # now that we know the encoding, calc the sizes of the various elements in the file
-    my $L=_packlongchar($self);
+    $self->_sizes; # now that we know the encoding, calc the sizes of the various elements in the file
+    my $L=$self->_packlongchar;
 
     # extract info on number of DS's and RRS's, plus the pdp step size
     ($rrd->{ds_cnt}, $rrd->{rra_cnt}, $rrd->{pdp_step}) =unpack("$L $L $L",substr($staticheader,$self->{OFFSET} +$self->{FLOAT_EL_SIZE},3*$self->{LONG_EL_SIZE}));  
@@ -1730,25 +1734,25 @@ sub open {
 
     # read in the full header now;
     seek $self->{fd},0,0; # go back to start of the file
-    read($self->{fd},my $header,_get_header_size($self));   
+    read($self->{fd},my $header,$self->_get_header_size);   
     # extract header info into structured arrays
     my $pos=$self->{DS_DEF_IDX};   
-    _extractDSdefs($self,\$header,$pos);
+    $self->_extractDSdefs(\$header,$pos);
     
     $pos+=$self->{DS_EL_SIZE}*$rrd->{ds_cnt};  
-    _extractRRAdefs($self,\$header,$pos);
+    $self->_extractRRAdefs(\$header,$pos);
     
     $pos+=$self->{RRA_DEF_EL_SIZE}*$rrd->{rra_cnt};
     $rrd->{last_up} = unpack("$L",substr($header,$pos,$self->{LONG_EL_SIZE})); 
     
     $pos+=$self->{LIVE_HEAD_SIZE};
-    _extractPDPprep($self,\$header,$pos);
+    $self->_extractPDPprep(\$header,$pos);
     
     $pos+=$self->{PDP_PREP_EL_SIZE}*$rrd->{ds_cnt};
-    _extractCDPprep($self,\$header,$pos);
+    $self->_extractCDPprep(\$header,$pos);
     
     $pos+=$self->{CDP_PREP_EL_SIZE}*$rrd->{ds_cnt}*$rrd->{rra_cnt};   
-    _extractRRAptr($self,\$header,$pos);
+    $self->_extractRRAptr(\$header,$pos);
     
     $pos+=$self->{RRA_PTR_EL_SIZE}*$rrd->{rra_cnt}; 
     
@@ -1757,7 +1761,7 @@ sub open {
     for ($i=0; $i<$rrd->{rra_cnt}; $i++) {
         $row_cnt+=$rrd->{rra}[$i]->{row_cnt};
     }
-    my $correct_len=_get_header_size($self) +$self->{FLOAT_EL_SIZE} * $row_cnt*$rrd->{ds_cnt};
+    my $correct_len=$self->_get_header_size +$self->{FLOAT_EL_SIZE} * $row_cnt*$rrd->{ds_cnt};
     if ($file_len < $correct_len  || $file_len > $correct_len+8) { # extra 8 bytes here is to allow for padding on Linux/Intel 64 bit platforms
         croak($self->{file_name}." size is incorrect (is $file_len bytes but should be $correct_len bytes)");
     }
@@ -2226,7 +2230,7 @@ The tag C<all> is available to easily export everything:
  
 The RRD::Editor code is portable, and so long as you stick to using the C<portable-double> and C<portable-single> file formats the RRD files generated will also be portable.  Portability issues arise when the C<native-double> file format of RRD::Editor is used to store RRDs.  This format tries to be compatible with the non-portable binary format used by RRDTOOL, which requires RRD::Editor to figure out nasty low-level details of the platform it is running on (byte ordering, byte alignment, representation used for doubles etc).   To date, RRD::Editor and RRDTOOL have been confirmed compatible (i.e. they can read each others RRD files in C<native-double> format) on the following platforms:
 
-Intel 386 32 bit, Intel 686 32bit, AMD64/Intel x86 64bit, MIPS 32bit, MIPSel 32 bit, PowerPC 32bit, ARM 926EJ-S v5l (32bit, ABI/mixed-endian floats), SPARC 32bit, SH4
+Intel 386 32 bit, Intel 686 32bit, AMD64/Intel x86 64bit, Itanium 64bit, MIPS 32bit, MIPSel 32 bit, PowerPC 32bit, ARM 926EJ-S v5l (32bit, ABI/mixed-endian floats), SPARC 32bit, SH4
  
 Known issues:
  
@@ -2240,7 +2244,7 @@ L<rrdtool.pl|http://cpansearch.perl.org/src/DOUGLEITH/RRD-Editor-0.02/scripts/rr
  
 =head1 VERSION
  
-Ver 0.09
+Ver 0.10_1
  
 =head1 AUTHOR
  

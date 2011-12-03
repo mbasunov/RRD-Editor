@@ -5,6 +5,7 @@ use RRD::Editor;
 #use String::Escape qw( printable unprintable );
 use File::Spec;
 use File::Basename qw(dirname);
+#use File::Temp qw(tempfile);
 my $scriptdir=File::Spec->rel2abs(dirname(__FILE__));
 
 my $rrd = RRD::Editor->new();
@@ -38,6 +39,8 @@ ok($rrd->close(),"close()");
 # save portable-single format file to memory
 my $fileDB_single='';
 $rrd->{file_name}=\$fileDB_single;
+#my ($fhDB_single,$fileDB_single)=tempfile();
+#$rrd->{file_name}=$fileDB_single;
 $rrd->{encoding}="portable-single";
 ok($rrd->save(),"save()"); # save RRD to string in memory (no need for temp file)
 ok($rrd->close(),"close()");
