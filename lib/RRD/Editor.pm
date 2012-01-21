@@ -20,7 +20,7 @@ use Config;
 
 use vars qw($VERSION @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = '0.10';
+$VERSION = '0.11';
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
@@ -92,7 +92,7 @@ use constant  SINGLE_FLOATCOOKIE                =>   8.6421343830016e+13;  # coo
 
 sub _native_double {
    # try to figure out the long/double alignment needed for the RRDTOOL file format
-    if ($Config{myarchname} =~ m/^(sparc|mips|ppc)/i && NATIVE_LONG_EL_SIZE==4) { # Only affects behaviour when writing new files from scratch,                                                                         
+    if ($Config{myarchname} =~ m/(sparc|mips|irix|ppc)/i && NATIVE_LONG_EL_SIZE==4) { # Only affects behaviour when writing new files from scratch,                                                                         
                                                                             # otherwise can figure out the right alignment to use when  
                                                                             # reading an existing file
         # For 32 bit MIPS, MIPSel, PowerPC, SPARC machines, align long ints on 32 bit boundaries and doubles on 64 bit boundaries
@@ -1552,7 +1552,7 @@ sub save {
     } elsif (!defined($self->{file_name})) {
         croak("Must either supply a filename to use or have a file already opened e.g. via calling open()\n");
     }
-    open $self->{fd}, "+<", $self->{file_name} or croak "Couldn't open file ".$self->{file_name}.": $!\n";
+    open $self->{fd}, "+<", $self->{file_name} or open $self->{fd}, ">", $self->{file_name} or croak "Couldn't open file ".$self->{file_name}.": $!\n";
     binmode($self->{fd});
     my $fd=$self->{fd};
 
@@ -2230,7 +2230,7 @@ The tag C<all> is available to easily export everything:
  
 The RRD::Editor code is portable, and so long as you stick to using the C<portable-double> and C<portable-single> file formats the RRD files generated will also be portable.  Portability issues arise when the C<native-double> file format of RRD::Editor is used to store RRDs.  This format tries to be compatible with the non-portable binary format used by RRDTOOL, which requires RRD::Editor to figure out nasty low-level details of the platform it is running on (byte ordering, byte alignment, representation used for doubles etc).   To date, RRD::Editor and RRDTOOL have been confirmed compatible (i.e. they can read each others RRD files in C<native-double> format) on the following platforms:
 
-Intel 386 32 bit, Intel 686 32bit, AMD64/Intel x86 64bit, Itanium 64bit, MIPS 32bit, MIPSel 32 bit, PowerPC 32bit, ARM 926EJ-S v5l (32bit, ABI/mixed-endian floats), SPARC 32bit, SH4
+Intel 386 32 bit, Intel 686 32bit, AMD64/Intel x86 64bit, Itanium 64bit, MIPS 32bit, MIPSel 32 bit, MIPS 64 bit, PowerPC 32bit, ARM 926EJ-S v5l (32bit, ABI/mixed-endian floats), SPARC 32bit, SH4
  
 Known issues:
  
@@ -2244,7 +2244,7 @@ L<rrdtool.pl|http://cpansearch.perl.org/src/DOUGLEITH/RRD-Editor-0.02/scripts/rr
  
 =head1 VERSION
  
-Ver 0.10
+Ver 0.11
  
 =head1 AUTHOR
  
