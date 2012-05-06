@@ -7,3 +7,4 @@ Revision history for RRD-Editor
 0.08	More portability tweaks to handle NaN, Inf on older systems
 0.09	Handling NaN, Inf on windows systems
 0.10	Better file opening (readonly handling), minor code tweaks.  Thanks to John LoVerso.
+0.12	Further portability testing - Irix
