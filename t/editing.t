@@ -1,17 +1,23 @@
 #!perl -w
 
-use Test::Simple tests => 15;
+use Test::More tests => 17;
 use File::Spec;
 use File::Basename qw(dirname);
 my $scriptdir=File::Spec->rel2abs(dirname(__FILE__));
 
-use RRD::Editor;
+BEGIN {
+  use_ok('RRD::Editor') or BAIL_OUT("cannot load the module");
+}
 
-my $rrd = RRD::Editor->new();
-ok( defined $rrd, 'new()' );
-$rrd->open("t/test.rrd");
+note("Testing RRD::Editor $RRD::Editor::VERSION, Perl $], $^X");
 
-# do some DSediting
+my $rrd = new_ok ( "RRD::Editor");
+
+note("Opening RRD file ...");
+ok($rrd->open("$scriptdir/test.rrd"), 'open()');
+note("Opened.");
+
+note("Testing some DS editing ...");
 ok($rrd->rename_DS("el1","new1"),"rename_DS()");
 ok($rrd->set_DS_heartbeat("el2",1200), "set_DS_heartbeat()");
 ok($rrd->set_DS_type("el2","ABSOLUTE"),"set_DS_type()");
@@ -20,13 +26,13 @@ ok($rrd->set_DS_max("el2",1),"set_DS_max()");
 ok($rrd->add_DS("DS:added:GAUGE:600:U:U"),"add_DS()");
 ok($rrd->delete_DS("el3"),"delete_DS()");
 #open $fd, ">t/test.rrd.ds_editing.dump"; print $fd $rrd->dump("-t -d=5"); close $fd;
-# is result what we expect ?
+note("Check the result is what we expect ...");
 open $fd, "<$scriptdir/test.rrd.ds_editing.dump"; @file=<$fd>; ;close $fd;
 my $dump=$rrd->dump("-t -d=5"); #$dump=~ s/UTC/GMT/g;
-ok (lc($dump) eq lc(join("",@file)), "DS editing");
+is (lc($dump), lc(join("",@file)), "DS editing");
 $rrd->close();
 
-# do some RRA editing
+note("Testing some RRA editing ...");
 $rrd->open("t/test.rrd");
 ok($rrd->set_RRA_xff(1,0), "set_RRA_xff()");
 ok($rrd->set_RRA_el(1,"el1",2,100),"set_RRA_el()");
@@ -34,9 +40,8 @@ ok($rrd->resize_RRA(1,20), "resize_RRA()");
 ok($rrd->add_RRA("RRA:AVERAGE:0.5:3:10"),"add_RRA()");
 ok($rrd->delete_RRA(0),"delete_RRA()");
 #open $fd, ">t/test.rrd.rra_editing.dump"; print $fd $rrd->dump("-t -d=5"); close $fd;
-# is result what we expect ?
+note("Check the result is what we expect ...");
 open $fd, "<$scriptdir/test.rrd.rra_editing.dump"; @file=<$fd>; ;close $fd;
 $dump=$rrd->dump("-t -d=5"); #$dump=~ s/UTC/GMT/g;
-ok (lc($dump) eq lc(join("",@file)), "RRA editing");
+is (lc($dump), lc(join("",@file)), "RRA editing");
 $rrd->close();
-
