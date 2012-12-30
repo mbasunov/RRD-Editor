@@ -1,6 +1,6 @@
 #!perl -w
 
-use Test::More tests => 17;
+use Test::More tests => 20; 
 use File::Spec;
 use File::Basename qw(dirname);
 my $scriptdir=File::Spec->rel2abs(dirname(__FILE__));
@@ -45,3 +45,13 @@ open $fd, "<$scriptdir/test.rrd.rra_editing.dump"; @file=<$fd>; ;close $fd;
 $dump=$rrd->dump("-t -d=5"); #$dump=~ s/UTC/GMT/g;
 is (lc($dump), lc(join("",@file)), "RRA editing");
 $rrd->close();
+
+note("Checking update using partial template ...");
+$rrd->open("t/test.rrd");
+my $fileDB='';
+$rrd->{file_name}=\$fileDB;
+ok($rrd->save(),"save()"); # save RRD to string in memory (no need for temp file)
+my $j=$rrd->last()+300; ok($rrd->update("-t el1:el2:el4 $j:67:1.0:2"));
+my @vals=$rrd->lastupdate(); 
+is (lc(join(" ",@vals)), lc("67 1.0 u 2"), "Partial template update");
+

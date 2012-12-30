@@ -20,7 +20,7 @@ use Config;
 
 use vars qw($VERSION @EXPORT @EXPORT_OK %EXPORT_TAGS @ISA);
 
-$VERSION = '0.14';
+$VERSION = '0.15';
 
 @ISA = qw(Exporter);
 @EXPORT = qw();
@@ -954,9 +954,16 @@ sub update {
 
     # Parse template, if provided
     my $i; my $j;
-    my @tmp=split(/:/,$template); my @idx=(0 .. $rrd->{ds_cnt}-1);
-    for ($i=0; $i<@tmp; $i++) {
-        $idx[$i]=$self->_findDSidx($tmp[$i]); if($idx[$i]<0) {croak("Unknown DS name ".$tmp[$i]."\n");}
+    my @tmp=split(/:/,$template); 
+    my @idx;
+    if (@tmp == 0) {
+        # no template, default to complete DS list
+        @idx=(0 .. $rrd->{ds_cnt}-1);
+    } else {
+        # read DS list from template
+        for ($i=0; $i<@tmp; $i++) {
+            $idx[$i]=$self->_findDSidx($tmp[$i]); if($idx[$i]<0) {croak("Unknown DS name ".$tmp[$i]."\n");}
+        }
     }
     # Parse update strings - updates the primary data points (PDPs)
     # and consolidated data points (CDPs), and writes changes to the RRAs.
@@ -976,7 +983,10 @@ sub update {
         }
         if ($current_time < $rrd->{last_up}) {croak("attempt to update using time $current_time when last update time is ". $rrd->{last_up}."\n");}
         $interval=$current_time - $rrd->{last_up}; 
-        @updvals = "U" x $rrd->{ds_cnt};  # initialise values to NaN
+        # initialise values to NaN
+        for ($j=0; $j<$rrd->{ds_cnt}; $j++) {
+            $updvals[$j]="U";
+        }
         for ($j=0; $j<@idx; $j++) {
             $updvals[$idx[$j]] = $bits[$j+1];
         }
@@ -2249,7 +2259,7 @@ L<rrdtool.pl|http://cpansearch.perl.org/src/DOUGLEITH/RRD-Editor-0.12/scripts/rr
  
 =head1 VERSION
  
-Ver 0.14
+Ver 0.15
  
 =head1 AUTHOR
  

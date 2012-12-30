@@ -30,7 +30,7 @@ note("Checking rrd->fetch() output ...");
 open $fd, "<$scriptdir/test.rrd.fetch"; @file=<$fd>;  $file=join("",@file);
 is(lc($rrd->fetch("AVERAGE -s=920804399 -d=5")), lc($file), "fetch()"); 
 
-note("Checking rrd->fetch() output ...");
+note("Checking rrd->last() output ...");
 ok($rrd->last() == 920806800, 'last():'.$rrd->last());
 
 note("Checking other output ...");
