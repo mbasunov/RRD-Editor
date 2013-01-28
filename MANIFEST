@@ -22,3 +22,4 @@ t/test.rrd.info
 t/test.rrd.rra_editing.dump
 t/test.rrd.rrdtool
 t/test.rrd.single
+META.json                                Module JSON meta-data (added by MakeMaker)
