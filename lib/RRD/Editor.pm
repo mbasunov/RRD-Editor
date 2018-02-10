@@ -916,8 +916,8 @@ sub resize_RRA {
     } elsif ($size < $row_cnt) {
         # Shrink; removing tail
         my $cnt_strip = $row_cnt-$size;
-        my $tail = ($ptr+1 + $cnt_strip > $size ? $row_cnt - $ptr-1 : $cnt_strip);
-        splice(@{$rrd->{rra}[$idx]->{data}}, $ptr+1, $tail);
+        my $tail = ($ptr+1 + $cnt_strip > $row_cnt ? $row_cnt - $ptr-1 : $cnt_strip);
+        splice(@{$rrd->{rra}[$idx]->{data}}, $ptr+1, $tail) if $tail > 0;
 
         # then removing head if remainder
         splice(@{$rrd->{rra}[$idx]->{data}}, 0, $cnt_strip-$tail) if $tail < $cnt_strip;
