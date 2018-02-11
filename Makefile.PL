@@ -11,11 +11,15 @@ WriteMakefile(
     ($ExtUtils::MakeMaker::VERSION >= 6.3002
       ? ('LICENSE'=> 'perl')
       : ()),
+    CONFIGURE_REQUIRES  => {
+        'ExtUtils::MakeMaker' => 6.64,
+    },
     PL_FILES            => {},
     PREREQ_PM => {
     },
     TEST_REQUIRES => {
         'Test::Deep'    => 0,
+        'Test::Exception' => 0,
         'Test::More'    => 0,
     },
     dist                => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
