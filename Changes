@@ -14,5 +14,5 @@ Revision history for RRD-Editor
     * CPAN#124303 resize_RRA() does not rely to ptr leading to shift of RRA data
     * CPAN#124355 delete_RRA() parameter validation allows out of range index
     - CPAN#124355 delete_RRA() last element of RRA array doesn't deleted after shift
-0.20    2018.02.11
+0.21    2018.02.16
     - Fixing test requirements

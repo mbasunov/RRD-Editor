@@ -18,6 +18,8 @@ WriteMakefile(
     PREREQ_PM => {
     },
     TEST_REQUIRES => {
+        'Clone'         => 0,
+        'File::Spec'    => 0,
         'Test::Deep'    => 0,
         'Test::Exception' => 0,
         'Test::More'    => 0,

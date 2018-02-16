@@ -3,7 +3,9 @@ abstract: 'Portable, standalone (no need for RRDs.pm) tool to create and edit RR
 author:
   - 'Doug Leith <dougleith@cpan.org>'
 build_requires:
+  Clone: '0'
   ExtUtils::MakeMaker: '0'
+  File::Spec: '0'
   Test::Deep: '0'
   Test::Exception: '0'
   Test::More: '0'
@@ -21,5 +23,5 @@ no_index:
     - t
     - inc
 requires: {}
-version: '0.20'
+version: '0.21'
 x_serialization_backend: 'CPAN::Meta::YAML version 0.018'
